@@ -30,7 +30,7 @@ data class LiveRuntimeState(
     val networkAvailable: Boolean = false,
     val networkValidated: Boolean = false,
     val codexOnline: Boolean = false,
-    val codexDesktopOnline: Boolean = false,
+    val codexWebUiOnline: Boolean = false,
     val harnessOnline: Boolean = false,
     val checking: Boolean = false,
     val detail: String = "尚未检测",
@@ -138,7 +138,7 @@ class TermuxRuntimeManager(private val context: Context) {
         runTermux(script, "启动 Codex 服务")
     }
 
-    fun restartCodexDesktopAndOpen(forceRestart: Boolean = false): Result<Unit> = runCatching {
+    fun restartCodexWebUiAndOpen(forceRestart: Boolean = false): Result<Unit> = runCatching {
         requireReady()
         val script = """
             mkdir -p "${'$'}HOME/.codex-harness-mobile"
@@ -351,10 +351,10 @@ EOF
             else -> "其他网络"
         }
         val codex = async { probe("http://127.0.0.1:4500/readyz") }
-        val codexDesktop = async { probe("http://127.0.0.1:3200/") }
+        val codexWebUi = async { probe("http://127.0.0.1:3200/") }
         val harness = async { probe("http://127.0.0.1:3080/") }
         val c = codex.await()
-        val d = codexDesktop.await()
+        val d = codexWebUi.await()
         val h = harness.await()
         val serviceDetail = when {
             !termux -> "尚未安装 Termux"
@@ -376,7 +376,7 @@ EOF
             networkAvailable = networkAvailable,
             networkValidated = networkValidated,
             codexOnline = c,
-            codexDesktopOnline = d,
+            codexWebUiOnline = d,
             harnessOnline = h,
             detail = if ((c || d || h) && !networkAvailable) {
                 "$serviceDetail · 当前无外网"
@@ -386,7 +386,7 @@ EOF
                 serviceDetail
             },
         )
-        val signature = "${state.termuxInstalled}/${state.commandPermission}/${state.termuxBatteryExempt}/${state.networkTransport}/${state.networkAvailable}/${state.networkValidated}/${state.codexOnline}/${state.codexDesktopOnline}/${state.harnessOnline}"
+        val signature = "${state.termuxInstalled}/${state.commandPermission}/${state.termuxBatteryExempt}/${state.networkTransport}/${state.networkAvailable}/${state.networkValidated}/${state.codexOnline}/${state.codexWebUiOnline}/${state.harnessOnline}"
         if (signature != lastHealthSignature) {
             lastHealthSignature = signature
             Log.i(TAG, "health=$signature detail=${state.detail}")

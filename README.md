@@ -11,7 +11,7 @@
 | 项目 | 当前值 |
 |---|---|
 | Android applicationId | app.codexharness.mobile |
-| 当前版本 | 0.6.0 / versionCode 83 |
+| 当前版本 | 0.6.1 / versionCode 84 |
 | 最低 Android 版本 | API 29（Android 10） |
 | 编译 SDK | Android API 36 |
 | UI 技术 | Kotlin + Jetpack Compose + Material 3 |
@@ -754,8 +754,8 @@ git status --short --untracked-files=all
 git diff --check
 git add README.md NEXT-SESSION.md app .tools bootstrap-*.sh enable-termux-bridge.sh
 git diff --cached --stat
-git commit -m "release: Codex Harness Mobile 0.6.0"
-git tag v0.6.0
+git commit -m "release: Codex Harness Mobile 0.6.1"
+git tag v0.6.1
 git push origin main --follow-tags
 ~~~
 

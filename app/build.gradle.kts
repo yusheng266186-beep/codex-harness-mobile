@@ -12,8 +12,8 @@ android {
         applicationId = "app.codexharness.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 83
-        versionName = "0.6.0"
+        versionCode = 84
+        versionName = "0.6.1"
     }
 
     buildFeatures {

@@ -1,6 +1,6 @@
 # 交接文档（2026-09-22 继续）
 
-App 版本 **0.6.0**（versionCode 83）。本轮保留 DSH 3080 及全部 Android WebView 兼容层，Codex 页面从旧 cdesktop 切换到维护中的 LimLLL/codex-webui；底层仍由官方 Codex CLI/app-server 提供能力，并保留 4500 端口的原生 WebSocket 回退。首次点击 Codex WebUI 时，App 会在 Debian 中固定 commit、安装 pnpm 依赖、生成官方 schema、构建前后端、生成设备本地 API Key 并自动登录 WebView。此前已完成的附件缓存管理、窄屏专注模式、当前工作区服务重启、诊断分享、返回键关闭保护、小屏弹窗布局、按工作区保存工具栏位置、WebView 渲染自愈、网页 `capture` 图片输入相机回传、桌面图标快捷入口、系统分享文字导入、原生 Codex 语音输入和 DSH 移动端适配均保持不变。
+App 版本 **0.6.1**（versionCode 84）。本轮保留 DSH 3080 及全部 Android WebView 兼容层，Codex 页面从旧 cdesktop 切换到维护中的 LimLLL/codex-webui；底层仍由官方 Codex CLI/app-server 提供能力，并保留 4500 端口的原生 WebSocket 回退。首次点击 Codex WebUI 时，App 会在 Debian 中固定 commit、安装 pnpm 依赖、生成官方 schema、构建前后端、生成设备本地 API Key 并自动登录 WebView。此前已完成的附件缓存管理、窄屏专注模式、当前工作区服务重启、诊断分享、返回键关闭保护、小屏弹窗布局、按工作区保存工具栏位置、WebView 渲染自愈、网页 `capture` 图片输入相机回传、桌面图标快捷入口、系统分享文字导入、原生 Codex 语音输入和 DSH 移动端适配均保持不变。
 
 ## 本轮 Codex WebUI 迁移重点
 
@@ -103,7 +103,7 @@ DSH 的模型、权限和顶部更多操作菜单使用 `100vh` 计算最大高�
 - 网页错误详情复制：新增 `copyWebErrorDetails`，Codex 工作台和 DeepSeek Harness 的错误卡在现有操作下方提供复制入口，内容包含页面名称、错误文本和当前 WebView URL，不改变网页会话或重载状态。
 - 附件缓存管理：连接诊断新增“附件暂存”卡片，异步显示 `webview-upload` 的文件数量、总占用和超过 24 小时的可清理数量；“清理 24 小时前缓存”只删除旧暂存文件，清理完成后立即刷新统计并反馈释放空间。
 - 窄屏专注工具栏：`FocusTools` 根据 `screenWidthDp <= 420` 隐藏重复的 Codex/Harness 标题，适配加入沉浸模式入口后的完整按钮组，保留所有功能按钮并重新计算拖动边界；连接诊断图标按网络可用性显示青色、未验证黄色或不可用红色，并更新无障碍描述。
-- 当前工作区服务重启：`DiagnosticsDialog` 新增“重启”入口；Codex 工作台调用 `restartCodexDesktopAndOpen(forceRestart = true)`，Harness 调用 `restartHarnessAndOpen(forceRestart = true)`，先关闭当前 WebView，再强制清理旧进程、等待对应端口和回调恢复，操作锁防止重复下发。
+- 当前工作区服务重启：`DiagnosticsDialog` 新增“重启”入口；Codex WebUI 调用 `restartCodexWebUiAndOpen(forceRestart = true)`，Harness 调用 `restartHarnessAndOpen(forceRestart = true)`，先关闭当前 WebView，再强制清理旧进程、等待对应端口和回调恢复，操作锁防止重复下发。
 - 诊断分享：将原有诊断摘要抽成统一文本生成函数，复制和系统 `ACTION_SEND` 共用同一份内容；分享保留网络、Termux、当前工作区、附件缓存、端口探测和最近回调信息，并沿用运行时已有的 token 脱敏。
 - 返回键关闭保护：`MobileWorkbench` 将网页专注模式的第二次系统返回改为显示确认框；键盘可见时仍交给系统先收起 IME，网页包装栏的后退按钮仍优先使用 WebView 历史记录，只有确认“关闭工作区”才调用原有关闭回调。
 - 弹窗高度响应式：新增 `mobileDialogMaxHeight`，按 `screenHeightDp` 为诊断、日志、Codex 设置、历史和审批内容区预留标题/确认按钮空间；大屏可显示更多内容，小屏自动缩短并依靠 `LazyColumn`/滚动容器继续访问完整内容。
@@ -231,7 +231,7 @@ ssh -p 8022 127.0.0.1
 | Codex CLI | `0.155.1`，ChatGPT 已登录（`codex login status` 可验）|
 | DeepSeek Harness | `0.1.6-alpha.2`（需 `--expose-internals`）|
 | Codex WebUI | `LimLLL/codex-webui` pinned commit，端口 3200 |
-| App | `0.6.0`（versionCode 83） |
+| App | `0.6.1`（versionCode 84） |
 
 ### 构建命令
 ```powershell

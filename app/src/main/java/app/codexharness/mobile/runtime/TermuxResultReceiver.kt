@@ -13,7 +13,7 @@ object HarnessBridgeState {
     var url by mutableStateOf<String?>(null)
 }
 
-object CodexDesktopBridgeState {
+object CodexWebUiBridgeState {
     var url by mutableStateOf<String?>(null)
     var apiKey by mutableStateOf<String?>(null)
 }
@@ -72,8 +72,8 @@ class TermuxResultReceiver : BroadcastReceiver() {
 
         when (bridgeKind) {
             "codex" -> {
-                if (url != null) CodexDesktopBridgeState.url = url
-                if (!webUiApiKey.isNullOrBlank()) CodexDesktopBridgeState.apiKey = webUiApiKey
+                if (url != null) CodexWebUiBridgeState.url = url
+                if (!webUiApiKey.isNullOrBlank()) CodexWebUiBridgeState.apiKey = webUiApiKey
                 if (url == null) Log.w(TAG, "codex command returned no loopback URL; keeping the current window")
             }
             "logs" -> Unit

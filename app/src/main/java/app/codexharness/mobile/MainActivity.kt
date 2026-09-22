@@ -180,7 +180,7 @@ import androidx.lifecycle.lifecycleScope
 import app.codexharness.mobile.runtime.CodexUiMessage
 import app.codexharness.mobile.runtime.CodexWebSocketClient
 import app.codexharness.mobile.runtime.CodexRunSettings
-import app.codexharness.mobile.runtime.CodexDesktopBridgeState
+import app.codexharness.mobile.runtime.CodexWebUiBridgeState
 import app.codexharness.mobile.runtime.HarnessBridgeState
 import app.codexharness.mobile.runtime.DiagnosticProbe
 import app.codexharness.mobile.runtime.LiveRuntimeState
@@ -717,9 +717,9 @@ class MainActivity : ComponentActivity() {
                 codex = codex,
                 harnessUrl = HarnessBridgeState.url,
                 onCloseHarness = { HarnessBridgeState.url = null },
-                codexDesktopUrl = CodexDesktopBridgeState.url,
-                codexWebUiApiKey = CodexDesktopBridgeState.apiKey,
-                onCloseCodexDesktop = { CodexDesktopBridgeState.url = null },
+                codexWebUiUrl = CodexWebUiBridgeState.url,
+                codexWebUiApiKey = CodexWebUiBridgeState.apiKey,
+                onCloseCodexWebUi = { CodexWebUiBridgeState.url = null },
                 shortcutRequest = shortcutRequest,
                 onShortcutConsumed = { shortcutRequest = null },
                 sharedTextRequest = sharedTextRequest,
@@ -1133,9 +1133,9 @@ private fun MobileWorkbench(
     codex: CodexWebSocketClient,
     harnessUrl: String?,
     onCloseHarness: () -> Unit,
-    codexDesktopUrl: String?,
+    codexWebUiUrl: String?,
     codexWebUiApiKey: String?,
-    onCloseCodexDesktop: () -> Unit,
+    onCloseCodexWebUi: () -> Unit,
     shortcutRequest: String?,
     onShortcutConsumed: () -> Unit,
     sharedTextRequest: String?,
@@ -1206,7 +1206,7 @@ private fun MobileWorkbench(
     var runtimeActionInFlight by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val latestHarnessUrl by rememberUpdatedState(harnessUrl)
-    val latestCodexDesktopUrl by rememberUpdatedState(codexDesktopUrl)
+    val latestCodexWebUiUrl by rememberUpdatedState(codexWebUiUrl)
     val latestCodexWebUiApiKey by rememberUpdatedState(codexWebUiApiKey)
     val activity = appContext as? Activity
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -1432,7 +1432,7 @@ private fun MobileWorkbench(
                 runDiagnostics()
                 if (failure == null) {
                     when {
-                        selected == Workspace.CODEX && latestCodexDesktopUrl != null -> codexReloadRequest++
+                        selected == Workspace.CODEX && latestCodexWebUiUrl != null -> codexReloadRequest++
                         selected == Workspace.HARNESS && latestHarnessUrl != null -> harnessReloadRequest++
                     }
                 }
@@ -1449,7 +1449,7 @@ private fun MobileWorkbench(
         when (workspace) {
             Workspace.CODEX -> {
                 codexWindowClosedByUser = false
-                onCloseCodexDesktop()
+                onCloseCodexWebUi()
             }
             Workspace.HARNESS -> {
                 harnessWindowClosedByUser = false
@@ -1461,7 +1461,7 @@ private fun MobileWorkbench(
                 val label = if (workspace == Workspace.CODEX) "Codex WebUI" else "Harness"
                 actionMessage = "正在重启 $label…"
                 val result = if (workspace == Workspace.CODEX) {
-                    runtime.restartCodexDesktopAndOpen(forceRestart = true)
+                    runtime.restartCodexWebUiAndOpen(forceRestart = true)
                 } else {
                     runtime.restartHarnessAndOpen(forceRestart = true)
                 }
@@ -1470,7 +1470,7 @@ private fun MobileWorkbench(
                     actionMessage = failure.message ?: "$label 重启失败"
                 } else {
                     val ready = waitForRuntime(if (workspace == Workspace.CODEX) 90_000L else 45_000L) { state ->
-                        if (workspace == Workspace.CODEX) state.codexDesktopOnline else state.harnessOnline
+                        if (workspace == Workspace.CODEX) state.codexWebUiOnline else state.harnessOnline
                     }
                     actionMessage = if (ready) "$label 已重启，正在打开…" else "重启命令已发送，$label 仍在启动…"
                 }
@@ -1488,7 +1488,7 @@ private fun MobileWorkbench(
 
         refresh()
 
-        suspend fun recoverRuntime(openHarnessWindow: Boolean, openCodexDesktopWindow: Boolean) {
+        suspend fun recoverRuntime(openHarnessWindow: Boolean, openCodexWebUiWindow: Boolean) {
             if (recoveryInFlight || runtimeActionInFlight) return
             if (!appInForeground) return
             val now = System.currentTimeMillis()
@@ -1502,11 +1502,11 @@ private fun MobileWorkbench(
             try {
                 actionMessage = "检测到 Termux 运行时中断，正在恢复本地服务…"
                 if (openHarnessWindow) selected = Workspace.HARNESS
-                else if (openCodexDesktopWindow) selected = Workspace.CODEX
+                else if (openCodexWebUiWindow) selected = Workspace.CODEX
 
                 val codexRequested = !health.codexOnline
                 val harnessRequested = openHarnessWindow || !health.harnessOnline
-                val desktopRequested = openCodexDesktopWindow
+                val webUiRequested = openCodexWebUiWindow
 
                 val codexResult = if (health.codexOnline) {
                     Result.success(Unit)
@@ -1518,19 +1518,19 @@ private fun MobileWorkbench(
                     health.harnessOnline -> Result.success(Unit)
                     else -> runtime.startHarness()
                 }
-                val desktopResult = if (openCodexDesktopWindow) {
-                    runtime.restartCodexDesktopAndOpen()
+                val webUiResult = if (openCodexWebUiWindow) {
+                    runtime.restartCodexWebUiAndOpen()
                 } else {
                     Result.success(Unit)
                 }
                 val failure = codexResult.exceptionOrNull()
                     ?: harnessResult.exceptionOrNull()
-                    ?: desktopResult.exceptionOrNull()
+                    ?: webUiResult.exceptionOrNull()
                 if (failure == null) {
                     val ready = waitForRuntime(90_000L) { state ->
                         (!codexRequested || state.codexOnline) &&
                             (!harnessRequested || state.harnessOnline) &&
-                            (!desktopRequested || state.codexDesktopOnline || latestCodexDesktopUrl != null)
+                            (!webUiRequested || state.codexWebUiOnline || latestCodexWebUiUrl != null)
                     }
                     actionMessage = if (ready) "本地服务已恢复" else "恢复命令已发送，服务仍在启动，后台会继续检查…"
                 } else {
@@ -1551,13 +1551,13 @@ private fun MobileWorkbench(
             health.commandPermission &&
             (!health.codexOnline || !health.harnessOnline ||
                 (health.harnessOnline && latestHarnessUrl == null && !harnessWindowClosedByUser) ||
-                (health.codexDesktopOnline && latestCodexDesktopUrl == null && !codexWindowClosedByUser) ||
-                (!health.codexDesktopOnline && latestCodexDesktopUrl != null && !codexWindowClosedByUser))
+                (health.codexWebUiOnline && latestCodexWebUiUrl == null && !codexWindowClosedByUser) ||
+                (!health.codexWebUiOnline && latestCodexWebUiUrl != null && !codexWindowClosedByUser))
         ) {
             recoverRuntime(
                 openHarnessWindow = !harnessWindowClosedByUser,
-                openCodexDesktopWindow = !codexWindowClosedByUser &&
-                    (health.codexDesktopOnline || latestCodexDesktopUrl != null),
+                openCodexWebUiWindow = !codexWindowClosedByUser &&
+                    (health.codexWebUiOnline || latestCodexWebUiUrl != null),
             )
         }
 
@@ -1570,16 +1570,16 @@ private fun MobileWorkbench(
                 health.commandPermission &&
                 (!health.codexOnline || !health.harnessOnline ||
                     (health.harnessOnline && latestHarnessUrl == null && !harnessWindowClosedByUser) ||
-                    (health.codexDesktopOnline && latestCodexDesktopUrl == null && !codexWindowClosedByUser) ||
-                    (!health.codexDesktopOnline && latestCodexDesktopUrl != null && !codexWindowClosedByUser))
+                    (health.codexWebUiOnline && latestCodexWebUiUrl == null && !codexWindowClosedByUser) ||
+                    (!health.codexWebUiOnline && latestCodexWebUiUrl != null && !codexWindowClosedByUser))
             ) {
                 // Termux can be swiped away independently of this Activity.
                 // Health polling is also the recovery trigger; the cooldown
                 // prevents a failed launch from flooding RunCommandService.
                 recoverRuntime(
                     openHarnessWindow = !harnessWindowClosedByUser,
-                    openCodexDesktopWindow = !codexWindowClosedByUser &&
-                        (health.codexDesktopOnline || latestCodexDesktopUrl != null),
+                    openCodexWebUiWindow = !codexWindowClosedByUser &&
+                        (health.codexWebUiOnline || latestCodexWebUiUrl != null),
                 )
             }
         }
@@ -1648,15 +1648,15 @@ private fun MobileWorkbench(
         }
     }
 
-    LaunchedEffect(codexDesktopUrl) {
-        if (codexDesktopUrl != null && !codexWindowClosedByUser) {
+    LaunchedEffect(codexWebUiUrl) {
+        if (codexWebUiUrl != null && !codexWindowClosedByUser) {
             selected = Workspace.CODEX
             actionMessage = null
         }
     }
 
     val webWorkspaceOpen = when (selected) {
-        Workspace.CODEX -> codexDesktopUrl != null
+        Workspace.CODEX -> codexWebUiUrl != null
         Workspace.HARNESS -> harnessUrl != null
     }
     DisposableEffect(activity, webWorkspaceOpen, chromeVisible, immersiveMode, appInForeground) {
@@ -1674,7 +1674,7 @@ private fun MobileWorkbench(
             }
         }
     }
-    LaunchedEffect(harnessUrl, codexDesktopUrl, selected) {
+    LaunchedEffect(harnessUrl, codexWebUiUrl, selected) {
         chromeVisible = !webWorkspaceOpen
     }
 
@@ -1687,7 +1687,7 @@ private fun MobileWorkbench(
         when (selected) {
             Workspace.CODEX -> {
                 codexWindowClosedByUser = true
-                onCloseCodexDesktop()
+                onCloseCodexWebUi()
             }
             Workspace.HARNESS -> {
                 harnessWindowClosedByUser = true
@@ -1712,7 +1712,7 @@ private fun MobileWorkbench(
                     harnessWindowClosedByUser = true
                     codexWindowClosedByUser = true
                     onCloseHarness()
-                    onCloseCodexDesktop()
+                    onCloseCodexWebUi()
                 } else {
                     harnessWindowClosedByUser = false
                     codexWindowClosedByUser = false
@@ -1721,7 +1721,7 @@ private fun MobileWorkbench(
                 if (result.isSuccess) {
                     val ready = if (stop) {
                         waitForRuntime(15_000L) { state ->
-                            !state.codexOnline && !state.codexDesktopOnline && !state.harnessOnline
+                            !state.codexOnline && !state.codexWebUiOnline && !state.harnessOnline
                         }
                     } else {
                         waitForRuntime(30_000L) { state -> state.codexOnline && state.harnessOnline }
@@ -1752,7 +1752,7 @@ private fun MobileWorkbench(
                     if (chromeVisible) {
                         AppHeader(
                             health = health,
-                            running = health.codexOnline || health.codexDesktopOnline || health.harnessOnline,
+                            running = health.codexOnline || health.codexWebUiOnline || health.harnessOnline,
                             workspaceOpen = webWorkspaceOpen,
                             actionBusy = runtimeActionInFlight,
                             compact = compactChrome,
@@ -1760,7 +1760,7 @@ private fun MobileWorkbench(
                             onDiagnostics = ::openDiagnostics,
                             onToggleChrome = { chromeVisible = false },
                             onToggle = {
-                                val running = health.codexOnline || health.codexDesktopOnline || health.harnessOnline
+                                val running = health.codexOnline || health.codexWebUiOnline || health.harnessOnline
                                 if (running) stopConfirmVisible = true else runRuntimeToggle(stop = false)
                             },
                         )
@@ -1785,7 +1785,7 @@ private fun MobileWorkbench(
                                 active = selected == Workspace.CODEX,
                                 health = health,
                                 client = codex,
-                                desktopUrl = codexDesktopUrl,
+                                webUiUrl = codexWebUiUrl,
                                 webUiApiKey = latestCodexWebUiApiKey,
                                 textZoom = codexTextZoom,
                                 sharedText = sharedTextRequest,
@@ -1794,23 +1794,23 @@ private fun MobileWorkbench(
                                 showFrameChrome = chromeVisible,
                                 onCloseDesktop = {
                                     codexWindowClosedByUser = true
-                                    onCloseCodexDesktop()
+                                    onCloseCodexWebUi()
                                 },
                                 onDiagnostics = ::openDiagnostics,
                                 onRecover = ::recoverLocalServices,
                                 reloadRequest = codexReloadRequest,
                                 onShowFileChooser = onShowFileChooser,
                                 onDownload = onDownload,
-                                onStartDesktop = {
+                                onStartWebUi = {
                                     if (beginRuntimeAction()) {
                                         runtimeStoppedByUser = false
                                         codexWindowClosedByUser = false
                                         scope.launch {
                                             try {
-                                                val result = runtime.restartCodexDesktopAndOpen()
+                                                val result = runtime.restartCodexWebUiAndOpen()
                                                 if (result.isSuccess) {
                                                     val ready = waitForRuntime(90_000L) { state ->
-                                                        state.codexDesktopOnline || latestCodexDesktopUrl != null
+                                                        state.codexWebUiOnline || latestCodexWebUiUrl != null
                                                     }
                                                     actionMessage = if (ready) {
                                                         "Codex 工作台已就绪，正在打开…"
@@ -2725,7 +2725,7 @@ private fun CodexScreen(
     active: Boolean,
     health: LiveRuntimeState,
     client: CodexWebSocketClient,
-    desktopUrl: String?,
+    webUiUrl: String?,
     webUiApiKey: String?,
     textZoom: Int,
     sharedText: String?,
@@ -2736,7 +2736,7 @@ private fun CodexScreen(
     onDiagnostics: () -> Unit,
     onRecover: () -> Unit,
     reloadRequest: Int,
-    onStartDesktop: () -> Unit,
+    onStartWebUi: () -> Unit,
     onStartCodex: () -> Unit,
     onPermission: () -> Unit,
     onShowFileChooser: (ValueCallback<Array<Uri>>, WebChromeClient.FileChooserParams) -> Boolean,
@@ -2746,8 +2746,8 @@ private fun CodexScreen(
 ) {
     var nativeMode by rememberSaveable { mutableStateOf(false) }
     var pendingSharedText by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(desktopUrl) {
-        if (desktopUrl != null) nativeMode = false
+    LaunchedEffect(webUiUrl) {
+        if (webUiUrl != null) nativeMode = false
     }
     LaunchedEffect(sharedText) {
         if (!sharedText.isNullOrBlank()) {
@@ -2757,11 +2757,11 @@ private fun CodexScreen(
         }
     }
     val showNative = nativeMode || pendingSharedText != null
-    if (desktopUrl != null && !showNative) {
-        CodexDesktopWebScreen(
+    if (webUiUrl != null && !showNative) {
+        CodexWebUiScreen(
             modifier = modifier,
             active = active,
-            url = desktopUrl,
+            url = webUiUrl,
             apiKey = webUiApiKey,
             textZoom = textZoom,
             showFrameChrome = showFrameChrome,
@@ -2792,15 +2792,15 @@ private fun CodexScreen(
             onToggleBackgroundNotifications = onToggleBackgroundNotifications,
         )
     } else {
-        CodexDesktopLanding(modifier, health, onStartDesktop, onPermission, onOpenNative = { nativeMode = true })
+        CodexWebUiLanding(modifier, health, onStartWebUi, onPermission, onOpenNative = { nativeMode = true })
     }
 }
 
 @Composable
-private fun CodexDesktopLanding(
+private fun CodexWebUiLanding(
     modifier: Modifier,
     health: LiveRuntimeState,
-    onStartDesktop: () -> Unit,
+    onStartWebUi: () -> Unit,
     onPermission: () -> Unit,
     onOpenNative: () -> Unit,
 ) {
@@ -2817,11 +2817,11 @@ private fun CodexDesktopLanding(
         }
         item {
             RuntimeBanner(
-                online = health.codexDesktopOnline,
-                title = if (health.codexDesktopOnline) "Codex WebUI 运行中" else "Codex WebUI 尚未打开",
-                detail = if (health.codexDesktopOnline) "本机地址 127.0.0.1:3200，可直接恢复窗口。" else "首次启动会在 Debian 中准备 WebUI 和官方 Codex 运行时，之后可离线快速启动。",
-                action = if (!health.commandPermission) "授予权限" else if (health.codexDesktopOnline) "打开 WebUI" else "启动并打开",
-                onAction = if (!health.commandPermission) onPermission else onStartDesktop,
+                online = health.codexWebUiOnline,
+                title = if (health.codexWebUiOnline) "Codex WebUI 运行中" else "Codex WebUI 尚未打开",
+                detail = if (health.codexWebUiOnline) "本机地址 127.0.0.1:3200，可直接恢复窗口。" else "首次启动会在 Debian 中准备 WebUI 和官方 Codex 运行时，之后可离线快速启动。",
+                action = if (!health.commandPermission) "授予权限" else if (health.codexWebUiOnline) "打开 WebUI" else "启动并打开",
+                onAction = if (!health.commandPermission) onPermission else onStartWebUi,
             )
         }
         item {
@@ -2834,7 +2834,7 @@ private fun CodexDesktopLanding(
         }
         item {
             Button(
-                onClick = if (!health.commandPermission) onPermission else onStartDesktop,
+                onClick = if (!health.commandPermission) onPermission else onStartWebUi,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Ink),
             ) {
@@ -2859,7 +2859,7 @@ private fun CodexDesktopLanding(
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun CodexDesktopWebScreen(
+private fun CodexWebUiScreen(
     modifier: Modifier,
     active: Boolean,
     url: String,
@@ -4356,7 +4356,7 @@ private fun HarnessDashboard(
                 HorizontalDivider(color = Line)
                 StatusRow(Icons.Rounded.Code, "Codex app-server", if (health.codexOnline) "运行中" else "已停止", health.codexOnline)
                 HorizontalDivider(color = Line)
-                StatusRow(Icons.Rounded.OpenInNew, "Codex WebUI", if (health.codexDesktopOnline) "运行中" else "未打开", health.codexDesktopOnline)
+                StatusRow(Icons.Rounded.OpenInNew, "Codex WebUI", if (health.codexWebUiOnline) "运行中" else "未打开", health.codexWebUiOnline)
                 HorizontalDivider(color = Line)
                 StatusRow(Icons.Rounded.Language, "DeepSeek Harness", if (health.harnessOnline) "运行中" else "已停止", health.harnessOnline)
             }
