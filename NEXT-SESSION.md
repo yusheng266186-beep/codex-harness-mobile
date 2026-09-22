@@ -252,6 +252,6 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
          66 files, 0.18 MB
 ```
 
-这个提交固定了迁移前「编译通过、两个界面在真机上可用」的状态，可作为历史回退点。当前 `main` 与 `mobile-github/main` 对齐于 `ac4a255`，标签 `v0.6.1` 指向同一提交；本地 `assembleDebug + lintDebug`、GitHub Actions 的 Android build 与 release 均已通过。APK：<https://github.com/yusheng266186-beep/codex-harness-mobile/releases/download/v0.6.1/CodexHarnessMobile-0.6.1.apk>；发布页：<https://github.com/yusheng266186-beep/codex-harness-mobile/releases/tag/v0.6.1>。当前电脑的 `adb devices -l` 没有设备；连接手机后优先验证 WebUI 首次安装/自动登录、上传文件、切换会话、关闭并重开 Termux 后恢复，以及 DSH 下拉菜单和提问卡。
+这个提交固定了迁移前「编译通过、两个界面在真机上可用」的状态，可作为历史回退点。应用源码发布标签为 `v0.6.1`；主分支可以继续包含后续文档和 CI 维护更新。本地 `assembleDebug + lintDebug`、GitHub Actions 的 Android build 与 release 均已通过。工作流使用受支持的主要版本：checkout v7、setup-java v6、setup-android v4、setup-gradle v6。APK：<https://github.com/yusheng266186-beep/codex-harness-mobile/releases/download/v0.6.1/CodexHarnessMobile-0.6.1.apk>；发布页：<https://github.com/yusheng266186-beep/codex-harness-mobile/releases/tag/v0.6.1>。当前电脑的 `adb devices -l` 没有设备；连接手机后优先验证 WebUI 首次安装/自动登录、上传文件、切换会话、关闭并重开 Termux 后恢复，以及 DSH 下拉菜单和提问卡。
 
 `.tools/oneoff-file-recovery/` 里是我修复文件编码时用的一次性脚本（含 dex 字符串提取与逐行还原）——**正常情况下不需要再跑**，保留仅供追溯。`.tools/` 根目录下的其余脚本是常用的设备调试工具。
