@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <queries>
+        <package android:name="com.termux" />
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Codex 移动工作台"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.CodexHarness">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Termux delivers the RUN_COMMAND result to this receiver, so it must be
+             exported. It deliberately carries no android:permission: a required
+             permission would have to be held by the SENDER, and Termux does not
+             declare ours, which silently drops the broadcast. Safety comes from
+             TermuxResultReceiver only ever accepting a loopback 127.0.0.1 URL on
+             the two known ports. -->
+        <receiver
+            android:name=".runtime.TermuxResultReceiver"
+            android:exported="true" />
+    </application>
+</manifest>

@@ -1,0 +1,32 @@
+# --- Build output ---
+build/
+.gradle/
+.kotlin/
+*.apk
+*.aab
+
+# --- Local machine config (absolute SDK path, never share) ---
+local.properties
+
+# --- Toolchain archives and extracted toolchains (large, re-downloadable) ---
+jdk17.zip
+gradle-*.zip
+gradle-dist/
+jdk17/
+.installBuildTools/
+
+# --- Staged cdesktop binaries (160 MB; rebuilt by .tools/deploy-cdesktop.ps1) ---
+.stage/
+
+# --- Debug captures produced while driving the phone over adb ---
+# Only at the repo root: never touch resources under app/src/.
+/*.png
+/*.xml
+/*.log
+/*.txt
+
+# --- Transient ---
+.tmp-*
+*.tgz
+.DS_Store
+Thumbs.db
