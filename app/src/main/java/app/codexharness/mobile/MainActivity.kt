@@ -197,6 +197,7 @@ import java.io.File
 import java.util.UUID
 import kotlin.math.roundToInt
 import android.webkit.ValueCallback
+import org.json.JSONObject
 
 private val Ink = Color(0xFF090C12)
 private val Panel = Color(0xFF111620)
@@ -441,6 +442,36 @@ private val HarnessViewportFix = """
     })();
 """.trimIndent()
 
+/**
+ * The Linux WebUI protects its REST and Socket.IO endpoints with a local JWT.
+ * The mobile shell receives the device-local API key from the Termux callback,
+ * then performs the same login flow as the WebUI's own login page.  The key
+ * never leaves the loopback WebView and is never written to Android logs.
+ */
+private fun codexWebUiAutoLoginScript(apiKey: String): String {
+    val encodedKey = JSONObject.quote(apiKey)
+    return """
+        (() => {
+          const apiKey = $encodedKey;
+          const storageKey = 'codex.webui.jwt';
+          if (!apiKey || sessionStorage.getItem(storageKey) || window.__codexHarnessAutoLoginStarted) return;
+          window.__codexHarnessAutoLoginStarted = true;
+          fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiKey }),
+          })
+            .then((response) => response.ok ? response.json() : Promise.reject(new Error('WebUI login failed')))
+            .then((data) => {
+              if (!data || typeof data.accessToken !== 'string') throw new Error('WebUI login response missing token');
+              sessionStorage.setItem(storageKey, data.accessToken);
+              window.location.replace('/');
+            })
+            .catch(() => { window.__codexHarnessAutoLoginStarted = false; });
+        })();
+    """.trimIndent()
+}
+
 private enum class Workspace { CODEX, HARNESS }
 
 private data class WebDownload(
@@ -671,7 +702,7 @@ class MainActivity : ComponentActivity() {
             ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         WindowCompat.setDecorFitsSystemWindows(window, true)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        // Lets us inspect the embedded Harness/cdesktop pages over chrome://inspect
+        // Lets us inspect the embedded Harness/Codex WebUI pages over chrome://inspect
         // (adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>).
         WebView.setWebContentsDebuggingEnabled(true)
         runtime = TermuxRuntimeManager(applicationContext)
@@ -687,6 +718,7 @@ class MainActivity : ComponentActivity() {
                 harnessUrl = HarnessBridgeState.url,
                 onCloseHarness = { HarnessBridgeState.url = null },
                 codexDesktopUrl = CodexDesktopBridgeState.url,
+                codexWebUiApiKey = CodexDesktopBridgeState.apiKey,
                 onCloseCodexDesktop = { CodexDesktopBridgeState.url = null },
                 shortcutRequest = shortcutRequest,
                 onShortcutConsumed = { shortcutRequest = null },
@@ -1102,6 +1134,7 @@ private fun MobileWorkbench(
     harnessUrl: String?,
     onCloseHarness: () -> Unit,
     codexDesktopUrl: String?,
+    codexWebUiApiKey: String?,
     onCloseCodexDesktop: () -> Unit,
     shortcutRequest: String?,
     onShortcutConsumed: () -> Unit,
@@ -1174,6 +1207,7 @@ private fun MobileWorkbench(
     val scope = rememberCoroutineScope()
     val latestHarnessUrl by rememberUpdatedState(harnessUrl)
     val latestCodexDesktopUrl by rememberUpdatedState(codexDesktopUrl)
+    val latestCodexWebUiApiKey by rememberUpdatedState(codexWebUiApiKey)
     val activity = appContext as? Activity
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val configuration = LocalConfiguration.current
@@ -1424,7 +1458,7 @@ private fun MobileWorkbench(
         }
         scope.launch {
             try {
-                val label = if (workspace == Workspace.CODEX) "Codex 工作台" else "Harness"
+                val label = if (workspace == Workspace.CODEX) "Codex WebUI" else "Harness"
                 actionMessage = "正在重启 $label…"
                 val result = if (workspace == Workspace.CODEX) {
                     runtime.restartCodexDesktopAndOpen(forceRestart = true)
@@ -1554,7 +1588,7 @@ private fun MobileWorkbench(
     // Termux can be closed or resumed while this Activity stays in the task
     // stack.  Refresh immediately when the app returns to the foreground so
     // the UI does not wait for the five-second polling interval (and so a
-    // restored Harness/cdesktop URL is picked up without reopening the app).
+    // restored Harness/WebUI URL is picked up without reopening the app).
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -1752,6 +1786,7 @@ private fun MobileWorkbench(
                                 health = health,
                                 client = codex,
                                 desktopUrl = codexDesktopUrl,
+                                webUiApiKey = latestCodexWebUiApiKey,
                                 textZoom = codexTextZoom,
                                 sharedText = sharedTextRequest,
                                 onSharedTextConsumed = onSharedTextConsumed,
@@ -1850,7 +1885,7 @@ private fun MobileWorkbench(
                                 },
                                 onOpenTermux = {
                                     actionMessage = runtime.openTermux().fold(
-                                        onSuccess = { "已打开 Termux，可查看 harness.log 和 cdesktop.log" },
+                                        onSuccess = { "已打开 Termux，可查看 harness.log 和 codex-webui.log" },
                                         onFailure = { it.message ?: "无法打开 Termux" },
                                     )
                                 },
@@ -1912,7 +1947,7 @@ private fun MobileWorkbench(
                 error = diagnosticsError,
                 lastAction = actionMessage,
                 actionBusy = runtimeActionInFlight,
-                currentWorkspaceLabel = if (selected == Workspace.CODEX) "Codex 工作台" else "Harness",
+                currentWorkspaceLabel = if (selected == Workspace.CODEX) "Codex WebUI" else "Harness",
                 onRefresh = ::runDiagnostics,
                 onRecover = ::recoverLocalServices,
                 onLogs = ::openLogs,
@@ -1940,7 +1975,7 @@ private fun MobileWorkbench(
                 title = { Text("停止本地服务？") },
                 text = {
                     Text(
-                        "这会停止 Codex、Codex 工作台和 Harness，正在执行的任务可能被中断。",
+                        "这会停止 Codex、Codex WebUI 和 Harness，正在执行的任务可能被中断。",
                         color = TextSecondary,
                     )
                 },
@@ -2549,7 +2584,7 @@ private fun DiagnosticsDialog(
                     item {
                         Text(
                             if (diagnostics.allLocalServicesHealthy) "本地服务均可访问；如果页面仍卡住，优先重新加载 WebView。"
-                            else "至少一个本地端点未响应；如果尚未打开 Codex 工作台，3200 端口可暂时忽略。",
+                            else "至少一个本地端点未响应；如果尚未打开 Codex WebUI，3200 端口可暂时忽略。",
                             color = if (diagnostics.allLocalServicesHealthy) Green else Amber,
                             fontSize = 11.sp,
                             lineHeight = 16.sp,
@@ -2691,6 +2726,7 @@ private fun CodexScreen(
     health: LiveRuntimeState,
     client: CodexWebSocketClient,
     desktopUrl: String?,
+    webUiApiKey: String?,
     textZoom: Int,
     sharedText: String?,
     onSharedTextConsumed: () -> Unit,
@@ -2726,6 +2762,7 @@ private fun CodexScreen(
             modifier = modifier,
             active = active,
             url = desktopUrl,
+            apiKey = webUiApiKey,
             textZoom = textZoom,
             showFrameChrome = showFrameChrome,
             onClose = onCloseDesktop,
@@ -2774,16 +2811,16 @@ private fun CodexDesktopLanding(
     ) {
         item {
             Column {
-                Text("Codex 开源工作台", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("基于成熟开源 GUI，手机上使用会话、文件、终端、审批和模型控制", color = TextSecondary, fontSize = 12.sp)
+                Text("Codex 官方 WebUI", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("维护中的 Linux WebUI，底层由官方 Codex app-server 提供能力和回退", color = TextSecondary, fontSize = 12.sp)
             }
         }
         item {
             RuntimeBanner(
                 online = health.codexDesktopOnline,
-                title = if (health.codexDesktopOnline) "Codex 工作台运行中" else "Codex 工作台尚未打开",
-                detail = if (health.codexDesktopOnline) "本机地址 127.0.0.1:3200，可直接恢复窗口。" else "ARM64 组件已预置，首次启动只需等待本地服务就绪。",
-                action = if (!health.commandPermission) "授予权限" else if (health.codexDesktopOnline) "打开工作台" else "启动并打开",
+                title = if (health.codexDesktopOnline) "Codex WebUI 运行中" else "Codex WebUI 尚未打开",
+                detail = if (health.codexDesktopOnline) "本机地址 127.0.0.1:3200，可直接恢复窗口。" else "首次启动会在 Debian 中准备 WebUI 和官方 Codex 运行时，之后可离线快速启动。",
+                action = if (!health.commandPermission) "授予权限" else if (health.codexDesktopOnline) "打开 WebUI" else "启动并打开",
                 onAction = if (!health.commandPermission) onPermission else onStartDesktop,
             )
         }
@@ -2803,7 +2840,7 @@ private fun CodexDesktopLanding(
             ) {
                 Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(7.dp))
-                Text(if (!health.commandPermission) "授予 Termux 权限" else "启动 Codex 工作台")
+                Text(if (!health.commandPermission) "授予 Termux 权限" else "启动 Codex WebUI")
             }
         }
         item {
@@ -2826,6 +2863,7 @@ private fun CodexDesktopWebScreen(
     modifier: Modifier,
     active: Boolean,
     url: String,
+    apiKey: String?,
     textZoom: Int,
     showFrameChrome: Boolean,
     onClose: () -> Unit,
@@ -2908,6 +2946,11 @@ private fun CodexDesktopWebScreen(
             reloadKey++
         }
     }
+    LaunchedEffect(apiKey, webViewRef, pageLoading) {
+        if (!apiKey.isNullOrBlank() && !pageLoading) {
+            webViewRef?.evaluateJavascript(codexWebUiAutoLoginScript(apiKey), null)
+        }
+    }
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     BackHandler(enabled = active && showFrameChrome && !imeVisible) {
         val webView = webViewRef
@@ -2918,7 +2961,7 @@ private fun CodexDesktopWebScreen(
             Row(Modifier.fillMaxWidth().height(44.dp).background(Panel).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Code, null, tint = Violet, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(7.dp))
-                Text("Codex 工作台", color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 1)
+                Text("Codex WebUI", color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 1)
                 IconButton(
                     onClick = { webViewRef?.goBack() },
                     enabled = canGoBack,
@@ -3000,6 +3043,9 @@ private fun CodexDesktopWebScreen(
                                 pageProgress = 100
                                 pageLoading = false
                                 syncNavigation(view)
+                                if (!apiKey.isNullOrBlank()) {
+                                    view.evaluateJavascript(codexWebUiAutoLoginScript(apiKey), null)
+                                }
                                 view.evaluateJavascript(HarnessViewportFix, null)
                             }
 
@@ -3009,7 +3055,7 @@ private fun CodexDesktopWebScreen(
                                 error: android.webkit.WebResourceError,
                             ) {
                                 if (request.isForMainFrame) {
-                                    val message = "工作台页面暂时无法连接：${error.description}"
+                                    val message = "Codex WebUI 页面暂时无法连接：${error.description}"
                                     scheduleAutoRetry(view, request.url.toString(), message)
                                     Log.w("CodexWebView", "main frame error ${error.errorCode}: ${error.description}")
                                 }
@@ -3022,7 +3068,7 @@ private fun CodexDesktopWebScreen(
                                 response: android.webkit.WebResourceResponse,
                             ) {
                                 if (request.isForMainFrame && response.statusCode >= 400) {
-                                    val message = "工作台返回 HTTP ${response.statusCode}，请稍后重试"
+                                    val message = "Codex WebUI 返回 HTTP ${response.statusCode}，请稍后重试"
                                     if (response.statusCode >= 500 || response.statusCode == 408 || response.statusCode == 429) {
                                         scheduleAutoRetry(view, request.url.toString(), message)
                                     } else {
@@ -3039,9 +3085,9 @@ private fun CodexDesktopWebScreen(
                                 loadWatchdogGeneration++
                                 pageLoading = false
                                 val rendererMessage = if (detail.didCrash()) {
-                                    "工作台渲染进程异常退出"
+                                    "Codex WebUI 渲染进程异常退出"
                                 } else {
-                                    "工作台渲染进程已被系统回收"
+                                    "Codex WebUI 渲染进程已被系统回收"
                                 }
                                 if (rendererRecoveryAttempt == 0) {
                                     rendererRecoveryAttempt = 1
@@ -3111,7 +3157,7 @@ private fun CodexDesktopWebScreen(
                     ) {
                         CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 2.dp, color = Violet)
                         Spacer(Modifier.width(7.dp))
-                        Text("正在打开 Codex 工作台… ${pageProgress.coerceIn(0, 100)}%", color = TextSecondary, fontSize = 10.sp)
+                        Text("正在打开 Codex WebUI… ${pageProgress.coerceIn(0, 100)}%", color = TextSecondary, fontSize = 10.sp)
                     }
                 }
             }
@@ -3136,7 +3182,7 @@ private fun CodexDesktopWebScreen(
                             TextButton(onClick = onDiagnostics) { Text("连接诊断") }
                             }
                             TextButton(onClick = {
-                                copyWebErrorDetails(context, "Codex 工作台页面错误", message, webViewRef?.url ?: url)
+                                copyWebErrorDetails(context, "Codex WebUI 页面错误", message, webViewRef?.url ?: url)
                             }) { Text("复制详情") }
                         }
                 }
@@ -3146,7 +3192,7 @@ private fun CodexDesktopWebScreen(
     if (findVisible) {
         WebFindDialog(
             webView = webViewRef,
-            pageTitle = "Codex 工作台",
+            pageTitle = "Codex WebUI",
             onDismiss = { findVisible = false },
         )
     }
@@ -4310,7 +4356,7 @@ private fun HarnessDashboard(
                 HorizontalDivider(color = Line)
                 StatusRow(Icons.Rounded.Code, "Codex app-server", if (health.codexOnline) "运行中" else "已停止", health.codexOnline)
                 HorizontalDivider(color = Line)
-                StatusRow(Icons.Rounded.OpenInNew, "Codex 工作台", if (health.codexDesktopOnline) "运行中" else "未打开", health.codexDesktopOnline)
+                StatusRow(Icons.Rounded.OpenInNew, "Codex WebUI", if (health.codexDesktopOnline) "运行中" else "未打开", health.codexDesktopOnline)
                 HorizontalDivider(color = Line)
                 StatusRow(Icons.Rounded.Language, "DeepSeek Harness", if (health.harnessOnline) "运行中" else "已停止", health.harnessOnline)
             }

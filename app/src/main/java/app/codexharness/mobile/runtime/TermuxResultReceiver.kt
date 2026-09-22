@@ -15,6 +15,7 @@ object HarnessBridgeState {
 
 object CodexDesktopBridgeState {
     var url by mutableStateOf<String?>(null)
+    var apiKey by mutableStateOf<String?>(null)
 }
 
 object TermuxCommandState {
@@ -59,6 +60,7 @@ class TermuxResultReceiver : BroadcastReceiver() {
 
         val output = values.joinToString("\n")
         val url = URL_PATTERN.find(output)?.value?.trimEnd(',', '.', ')', ']', '"', '\'')
+        val webUiApiKey = WEBUI_KEY_PATTERN.find(output)?.groupValues?.getOrNull(1)
         val safeOutput = redactSecrets(output)
 
         val bridgeKind = intent.getStringExtra(BRIDGE_KIND_EXTRA)
@@ -71,7 +73,8 @@ class TermuxResultReceiver : BroadcastReceiver() {
         when (bridgeKind) {
             "codex" -> {
                 if (url != null) CodexDesktopBridgeState.url = url
-                else Log.w(TAG, "codex command returned no loopback URL; keeping the current window")
+                if (!webUiApiKey.isNullOrBlank()) CodexDesktopBridgeState.apiKey = webUiApiKey
+                if (url == null) Log.w(TAG, "codex command returned no loopback URL; keeping the current window")
             }
             "logs" -> Unit
             else -> {
@@ -89,9 +92,18 @@ class TermuxResultReceiver : BroadcastReceiver() {
             "https?://(?:127\\.0\\.0\\.1|localhost):(3080|3200)(?:/[^\\s\"']*)?",
             RegexOption.IGNORE_CASE,
         )
+        val WEBUI_KEY_PATTERN = Regex(
+            "(?m)^CODEX_WEBUI_KEY:([A-Za-z0-9_-]{32,})\\s*$",
+        )
 
         fun redactSecrets(value: String): String = value.replace(
             Regex("(?i)(token=)[^\\s&]+"),
+            "$1…",
+        ).replace(
+            Regex("(?m)(CODEX_WEBUI_KEY:)[A-Za-z0-9_-]+"),
+            "$1…",
+        ).replace(
+            Regex("(?i)(WEBUI_API_KEY=)[A-Za-z0-9_-]+"),
             "$1…",
         )
     }

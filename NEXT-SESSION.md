@@ -1,6 +1,17 @@
-# 交接文档（2026-09-22 12:15）
+# 交接文档（2026-09-22 继续）
 
-App 版本 **0.5.65**（versionCode 82）。本轮在附件缓存管理、窄屏专注模式、当前工作区服务重启、诊断分享、返回键关闭保护、小屏弹窗布局、按工作区保存工具栏位置和 WebView 渲染自愈之外，新增网页 `capture` 图片输入的手机相机回传、桌面图标快捷入口、系统分享文字导入和原生 Codex 语音输入；长按图标可直接打开 Codex、Harness 或连接诊断，其他 App 分享文字时可直接预填原生 Codex 输入框，点击麦克风可用系统语音识别填入 Codex 草稿，并保留可选沉浸模式、420dp 窄屏收缩、Codex/Harness 独立网页文字缩放和错误详情 token 脱敏：专注模式工具栏可以隐藏 Android 系统栏以释放更多网页空间，系统手势仍可临时呼出，进入后台或离开专注模式时自动恢复。同时保留原生 Codex 紧凑操作栏、网络切换即时刷新、原生 Codex 对话内查找、后台完成通知、整段分享、原生 Codex 对话恢复、手机存储保护、实时网络状态、附件取消、严格暂存校验、附件进度反馈和前面已完成的手机端适配功能。
+App 版本 **0.6.0**（versionCode 83）。本轮保留 DSH 3080 及全部 Android WebView 兼容层，Codex 页面从旧 cdesktop 切换到维护中的 LimLLL/codex-webui；底层仍由官方 Codex CLI/app-server 提供能力，并保留 4500 端口的原生 WebSocket 回退。首次点击 Codex WebUI 时，App 会在 Debian 中固定 commit、安装 pnpm 依赖、生成官方 schema、构建前后端、生成设备本地 API Key 并自动登录 WebView。此前已完成的附件缓存管理、窄屏专注模式、当前工作区服务重启、诊断分享、返回键关闭保护、小屏弹窗布局、按工作区保存工具栏位置、WebView 渲染自愈、网页 `capture` 图片输入相机回传、桌面图标快捷入口、系统分享文字导入、原生 Codex 语音输入和 DSH 移动端适配均保持不变。
+
+## 本轮 Codex WebUI 迁移重点
+
+- **官方兜底**：WebUI 只负责页面、会话和附件交互；它通过 stdio 启动官方 Codex app-server。Android 原生回退仍直连独立的 `ws://127.0.0.1:4500`。
+- **DSH 不改端口、不改源码**：DeepSeek Harness 继续使用 3080；下拉菜单、提问卡、401 鉴权识别、文件 URI 暂存和全局可拖动工具栏的兼容代码均保留。
+- **可复现安装**：上游固定在 `e98ee58ac8c80780258474e0f13ca67a463a2726`，安装目录为 `/root/.codex-harness-mobile/codex-webui`，运行日志为 Termux HOME 下的 `codex-webui.log`。
+- **自动登录**：WebUI 生成的随机 key 只保存在 Debian 本地，Termux 回调只在 App 内存中短暂传递；WebView 使用同源 `/api/auth/login` 换取 JWT，不要求用户手动复制内部 key。
+- **附件链路**：LimLLL WebUI 的上传接口会把文件落到 Linux 文件系统，随后把可读路径交给官方 app-server；Android 仍负责 DSH 的 content URI 暂存和 FileProvider 权限。
+- **首次构建注意**：第一次安装会下载 Node 依赖并编译 `better-sqlite3`、`node-pty` 等原生模块，手机上可能需要几分钟；构建失败时先看 `codex-webui.log`，不要反复点启动。
+
+本轮新代码已经完成 Android 编译级检查；真机上的首次 WebUI 构建、自动登录、附件、多会话和 Termux 重开回归仍需在 ADB 设备上完成。
 
 ---
 
@@ -10,8 +21,8 @@ App 版本 **0.5.65**（versionCode 82）。本轮在附件缓存管理、窄屏
 |---|---|---|
 | **DSH 启动** | ✅ | `node --expose-internals /usr/bin/dsh web --no-open --port 3080`，App 自动启动后 3080 在 5–6 秒内就绪 |
 | **DSH 界面** | ✅ | 完整加载：侧栏、对话/轨迹标签、输入框、状态栏、历史数据完好 |
-| **Codex（cdesktop）** | ✅ | `Main server on :3200`，界面显示「欢迎回来」、文件夹选择、模型开关 `GPT-5.5 · 极高` |
-| **cdesktop 二进制** | ✅ | 静态 AArch64（无 glibc 依赖）在 proot 里正常运行，启动约 72 秒 |
+| **Codex（旧 cdesktop 基线）** | ✅（历史） | `Main server on :3200`，作为迁移前回退证据保留 |
+| **Codex WebUI 迁移** | ⏳ | Android 编译级检查已通过；待真机首次 pnpm 构建、自动登录、附件和重开验证 |
 | **Termux 回调链路** | ✅ | `I TermuxResultReceiver: result received: url=http://127.0.0.1:3080/?token=...` |
 | **Termux 重开后恢复 DSH** | ✅ | 关闭/重开 Termux 后自动重新 dispatch，3080 恢复，无 `EADDRINUSE` |
 | **WebView 手机布局** | ✅ | 真机已验证 Harness 主界面、输入框和附件按钮可见，键盘弹出时页面不塌陷 |
@@ -66,7 +77,7 @@ DSH 的模型、权限和顶部更多操作菜单使用 `100vh` 计算最大高�
 - 系统分享导入：Manifest 接收 `ACTION_SEND` / `ACTION_PROCESS_TEXT` 的 `text/plain`；文本限制为最多 100000 个字符，切到原生 Codex 后只写入 `composer_draft` 并等待用户主动点击发送，返回或新建对话仍沿用原有清理逻辑。
 - Codex/Harness 的 WebView 错误卡片新增“恢复服务”：复用本地健康检查补启缺失的 Codex/Harness 服务，等待检查完成后自动触发当前页面刷新；服务本来在线时也可用来修复失效的页面连接。
 - 专注模式展开后的浮动工具栏新增工作区切换按钮；切换到已打开的工作区会继续使用其保活 WebView，切换到未打开的工作区则退出专注模式并显示对应启动页。
-- 连接诊断新增“查看最近 Termux 日志”：通过回调读取 `harness.log`、`cdesktop.log`、`codex.log` 各最近 80 行，展示在可滚动弹窗中并支持复制；日志回调不会再被误判为 Harness URL，也会沿用 token 脱敏。
+- 连接诊断新增“查看最近 Termux 日志”：通过回调读取 `harness.log`、`codex-webui.log`、`codex.log` 各最近 80 行，展示在可滚动弹窗中并支持复制；日志回调不会再被误判为 Harness URL，也会沿用 token 脱敏。
 - 健康轮询按 Activity 前后台状态调整：前台每 5 秒检查并保留自动恢复；退到后台时改为 30 秒低频检查且跳过主动恢复；收到 `ON_RESUME` 后立即刷新 Termux、端口和 WebView 回调状态。
 - 最近日志弹窗新增“分享”，通过 Android 原生 `ACTION_SEND` 分享已经脱敏的纯文本日志，适合直接发给排查人员或保存到其他 App。
 - 原生 Codex 备用对话把未发送输入保存到 `codex_mobile_settings.composer_draft`；进程被系统回收后可恢复，发送和新建对话会清除草稿。
@@ -109,9 +120,9 @@ DSH 的模型、权限和顶部更多操作菜单使用 `100vh` 计算最大高�
 
 ### 后续注意
 
-- **cdesktop 首次启动较慢**：预置二进制已避免下载，但 Rust 服务首次启动仍可能需要几十秒；App 会显示工作台健康状态并提供页面重试
-- **cdesktop 遥测报错**：`services::services::analytics: Error sending event 'session_start'`（posthog 连不上），无害但刷日志
-- **cdesktop 找不到 `claude` / `opencode`**：只装了 Codex，属预期
+- **Codex WebUI 首次启动较慢**：第一次需要 pnpm 安装依赖和构建原生模块；优先查看 `codex-webui.log`，不要连续点击启动。
+- **Codex WebUI 登录页重复出现**：检查 `.webui-api-key`、`.env` 和 Termux 回调日志，确认 `CODEX_WEBUI_KEY` 已回传；不要把 key 粘贴到公共 issue。
+- **Codex WebUI 找不到 Codex**：确认 Debian 内 `codex login status` 正常，并检查 `.env` 中 `CODEX_HOME=/root/.codex` 与实际登录目录一致。
 - **`MainActivity.kt` 仍是单文件 UI**：后续大改前建议拆成 `ui/` 与 `web/` 子包
 - **0.5.32 APK 已在桌面环境完成 assembleDebug/lintDebug**；设备重连后执行 `adb install -r app\\build\\outputs\\apk\\debug\\app-debug.apk`，重点回归原生 Codex 后台完成/回前台提示和标记清理、网页网络错误自动重试/成功清零、401–403 不重试、停止按钮确认/取消/确认后停止、历史对话关键词搜索/清除/无结果提示/继续对话、键盘打开时返回键先收起 IME、键盘收起后再返回网页/工作区、软键盘弹出时浮动工具条避让和拖动、原生 Codex 消息复制/系统分享/长按复制、网页文字缩放在 Codex/Harness、切换工作区和重载后的保持、原生 Codex 回到底部/上滑不抢位置、草稿恢复/发送清理/新建清理、日志查看/复制/系统分享、前后台轮询节流和回前台恢复、App 内日志读取、专注模式工作区切换、页面错误后的恢复服务/自动刷新、附件暂存提示和重复选择、流式 DSH 布局、双页面切换状态保留、网页后退/前进/刷新、工作区记忆、原生 Codex 键盘发送、加载进度、工具栏归位、Termux 重开、DSH 下拉菜单和附件选择
 
@@ -156,7 +167,7 @@ sshd 子进程在同一会话里。测试脚本要把结果**写文件**，不�
 `HTTP_PROXY=127.0.0.1:10808`。npm 会 `ECONNREFUSED`，用 `Invoke-WebRequest` 直连 registry。
 
 ### 11. 手机 VPN 用 fake-IP DNS（`198.18.0.x`）
-回环地址不受影响，但公网下载极不稳定 —— 这就是 cdesktop 那 48.9 MB 首次下载卡在 2% 的原因。**已经通过预置二进制绕过**，不要再让它联网下载。
+回环地址不受影响，但公网下载极不稳定。旧 cdesktop 的离线预置流程只保留作历史排障记录；当前 Codex WebUI 使用固定源码和 pnpm lockfile 构建，首次安装必须确保 Debian 能访问 GitHub/npm registry，构建完成后运行不再重复下载。
 
 ---
 
@@ -167,20 +178,26 @@ sshd 子进程在同一会话里。测试脚本要把结果**写文件**，不�
 # Harness — DSH >= 0.1.6 需要 --expose-internals 加载原生 shim
 node --expose-internals /usr/bin/dsh web --no-open --port 3080
 
-# Codex — 直接执行预置的静态二进制，不走 npx
-$HOME/.cdesktop/bin/v0.2.3-20260519022845/linux-arm64/cdesktop   # HOST=127.0.0.1 PORT=3200
+# Codex WebUI — 在 Debian 中运行固定版本的 Node/Nest 服务
+cd /root/.codex-harness-mobile/codex-webui
+set -a; . .env; set +a
+exec node dist/main.js
 ```
 
 **为什么 DSH 需要 `--expose-internals`**：`@deepseek-ai/dsh` 从 `0.1.6-alpha.2` 起加载一个顶替 `node-addon-require-builtin` 的 shim，而那个原生插件**没有 Android 构建**。注意 **`NODE_OPTIONS` 不接受这个参数**（Node 出于安全禁止），必须直接传给 node。
 
 **备选方案**：npm 上 `latest` 其实是 `0.1.5-rc.2`（更新前正常工作的版本），回退可完全避开该原生插件。
 
-### cdesktop 预置位置
+### Codex WebUI 安装位置
 ```
-/root/.cdesktop/bin/v0.2.3-20260519022845/linux-arm64/
-  cdesktop  140MB   cdesktop-mcp  19.9MB   cdesktop-review  8.0MB   (+ 原始 .zip)
+/root/.codex-harness-mobile/codex-webui/
+  dist/main.js
+  public/index.html
+  .env
+  .webui-api-key
+  .codex-harness-mobile-ready
 ```
-wrapper 的 `ensureBinary()` 逻辑是「zip 已存在就直接返回，不联网也不取 manifest」，所以首次启动零下载。原始归档同时也留在 Termux 的 `~/.cdesktop-staging/`。
+`.codex-harness-mobile-ready` 记录固定 commit；`.webui-api-key` 和 `.env` 只在 Debian 本地保存，不能提交或复制到公共仓库。
 
 ### Termux 回调接收器（`TermuxResultReceiver.kt`）
 - **必须** `android:exported="true"` 且**不加 `android:permission`**
@@ -213,8 +230,8 @@ ssh -p 8022 127.0.0.1
 | Node.js | `v22.23.2` |
 | Codex CLI | `0.155.1`，ChatGPT 已登录（`codex login status` 可验）|
 | DeepSeek Harness | `0.1.6-alpha.2`（需 `--expose-internals`）|
-| cdesktop | `0.2.3`，端口 3200（预览代理 37453）|
-| App | `0.5.65`（versionCode 82） |
+| Codex WebUI | `LimLLL/codex-webui` pinned commit，端口 3200 |
+| App | `0.6.0`（versionCode 83） |
 
 ### 构建命令
 ```powershell

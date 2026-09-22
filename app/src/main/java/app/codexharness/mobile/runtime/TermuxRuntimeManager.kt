@@ -142,56 +142,93 @@ class TermuxRuntimeManager(private val context: Context) {
         requireReady()
         val script = """
             mkdir -p "${'$'}HOME/.codex-harness-mobile"
-            if [ "${'$'}forceRestart" != "true" ] && /system/bin/toybox nc -z -w 1 127.0.0.1 3200 >/dev/null 2>&1; then
-              printf '%s\n' 'http://127.0.0.1:3200'
+            WEBUI_DIR='/root/.codex-harness-mobile/codex-webui'
+            WEBUI_READY="${'$'}WEBUI_DIR/.codex-harness-mobile-ready"
+            if [ "${'$'}forceRestart" != "true" ] && /system/bin/toybox nc -z -w 1 127.0.0.1 3200 >/dev/null 2>&1 && proot-distro login debian -- test -s "${'$'}WEBUI_READY" >/dev/null 2>&1; then
+              key=${'$'}(proot-distro login debian -- cat "${'$'}WEBUI_DIR/.webui-api-key" 2>/dev/null | tr -d '\r\n')
+              printf '%s\n' 'http://127.0.0.1:3200' "CODEX_WEBUI_KEY:${'$'}key"
               exit 0
             fi
             kill_tree() {
               pid="${'$'}1"
+              [ -n "${'$'}pid" ] || return 0
               for child in ${'$'}(pgrep -P "${'$'}pid" 2>/dev/null); do kill_tree "${'$'}child"; done
               kill "${'$'}pid" >/dev/null 2>&1 || true
             }
-            # A stale/missing pid file must not leave a cdesktop process
-            # holding port 3200 during an explicit restart.
-            for old_pid in ${'$'}(pgrep -f '/cdesktop' 2>/dev/null); do
-              if [ "${'$'}old_pid" != "${'$'}${'$'}" ]; then kill_tree "${'$'}old_pid"; fi
-            done
+            # Remove the previous cdesktop process once, so an upgrade cannot
+            # mistake its old 3200 listener for the new WebUI.
             if [ -s "${'$'}HOME/.codex-harness-mobile/cdesktop.pid" ]; then
               kill_tree "${'$'}(cat "${'$'}HOME/.codex-harness-mobile/cdesktop.pid")"
               rm -f "${'$'}HOME/.codex-harness-mobile/cdesktop.pid"
+            fi
+            for old_pid in ${'$'}(pgrep -f '/cdesktop' 2>/dev/null); do
+              if [ "${'$'}old_pid" != "${'$'}${'$'}" ]; then kill_tree "${'$'}old_pid"; fi
+            done
+            if [ -s "${'$'}HOME/.codex-harness-mobile/codex-webui.pid" ]; then
+              kill_tree "${'$'}(cat "${'$'}HOME/.codex-harness-mobile/codex-webui.pid")"
+              rm -f "${'$'}HOME/.codex-harness-mobile/codex-webui.pid"
             fi
             for attempt in 1 2 3 4 5 6 7 8; do
               if ! /system/bin/toybox nc -z -w 1 127.0.0.1 3200 >/dev/null 2>&1; then break; fi
               sleep 1
             done
-            rm -f "${'$'}HOME/.codex-harness-mobile/cdesktop.log"
-            # The ARM64 runtime is already staged in the wrapper's cache (see
-            # .tools/do-stage.sh), so run the real binary directly. Going through
-            # `npx cdesktop` would re-resolve the package on every launch, and its
-            # own ~49 MB binary download stalls on this phone's network.
-            # All one line: a trailing backslash does not survive Intent extras.
-            CD="${'$'}HOME/.cdesktop/bin/v0.2.3-20260519022845/linux-arm64/cdesktop"
-            if [ -x "${'$'}CD" ]; then
-              nohup setsid proot-distro login debian -- env HOST=127.0.0.1 PORT=3200 "${'$'}CD" </dev/null >"${'$'}HOME/.codex-harness-mobile/cdesktop.log" 2>&1 &
-            elif command -v cdesktop >/dev/null 2>&1; then
-              nohup setsid proot-distro login debian -- env HOST=127.0.0.1 PORT=3200 cdesktop </dev/null >"${'$'}HOME/.codex-harness-mobile/cdesktop.log" 2>&1 &
-            else
-              nohup setsid proot-distro login debian -- env HOST=127.0.0.1 PORT=3200 npx --yes cdesktop@0.2.3 </dev/null >"${'$'}HOME/.codex-harness-mobile/cdesktop.log" 2>&1 &
+            rm -f "${'$'}HOME/.codex-harness-mobile/codex-webui.log"
+
+            # Install the pinned Linux WebUI on first use. It owns a stdio
+            # official Codex app-server child; the separate 4500 service remains
+            # available for the native Android fallback.
+            if ! proot-distro login debian -- test -s "${'$'}WEBUI_READY" || ! proot-distro login debian -- test -s "${'$'}WEBUI_DIR/.env" || ! proot-distro login debian -- test -f "${'$'}WEBUI_DIR/dist/main.js" || ! proot-distro login debian -- test -f "${'$'}WEBUI_DIR/public/index.html"; then
+              proot-distro login debian -- bash -lc '
+                set -Eeuo pipefail
+                REPO="https://github.com/LimLLL/codex-webui.git"
+                COMMIT="e98ee58ac8c80780258474e0f13ca67a463a2726"
+                DIR="/root/.codex-harness-mobile/codex-webui"
+                command -v git >/dev/null 2>&1
+                command -v node >/dev/null 2>&1
+                if ! command -v pnpm >/dev/null 2>&1; then
+                  command -v corepack >/dev/null 2>&1
+                  corepack enable
+                  corepack prepare pnpm@10.18.3 --activate
+                fi
+                mkdir -p "$(dirname "${'$'}{DIR}")"
+                if [ ! -d "${'$'}{DIR}/.git" ]; then git clone --filter=blob:none "${'$'}{REPO}" "${'$'}{DIR}"; fi
+                cd "${'$'}{DIR}"
+                git fetch --depth 1 origin "${'$'}{COMMIT}"
+                git checkout --detach "${'$'}{COMMIT}"
+                pnpm install --frozen-lockfile
+                pnpm codex:schema
+                pnpm --dir web build
+                pnpm build
+                umask 077
+                if [ ! -s "${'$'}{DIR}/.webui-api-key" ]; then
+                  if command -v openssl >/dev/null 2>&1; then openssl rand -hex 32 > "${'$'}{DIR}/.webui-api-key"; else od -An -N32 -tx1 /dev/urandom | tr -d " \n" > "${'$'}{DIR}/.webui-api-key"; printf "\n" >> "${'$'}{DIR}/.webui-api-key"; fi
+                fi
+                key="$(tr -d "\r\n" < "${'$'}{DIR}/.webui-api-key")"
+                [ "${'$'}{#key}" -ge 32 ]
+                cat > "${'$'}{DIR}/.env" <<EOF
+WEBUI_API_KEY=${'$'}{key}
+PORT=3200
+CODEX_BIN=codex
+CODEX_HOME=/root/.codex
+EOF
+                printf "%s\n" "${'$'}{COMMIT}" > "${'$'}{DIR}/.codex-harness-mobile-ready"
+              '
             fi
-            echo ${'$'}! >"${'$'}HOME/.codex-harness-mobile/cdesktop.pid"
-            # cdesktop has to boot a Rust backend and bind the port; over mobile
-            # data with the binaries already cached this still needs well over 30s.
-            for attempt in ${'$'}(seq 1 120); do
+
+            nohup setsid proot-distro login debian -- bash -lc 'cd /root/.codex-harness-mobile/codex-webui && set -a && . .env && set +a && exec node dist/main.js' </dev/null >"${'$'}HOME/.codex-harness-mobile/codex-webui.log" 2>&1 &
+            echo ${'$'}! >"${'$'}HOME/.codex-harness-mobile/codex-webui.pid"
+            for attempt in ${'$'}(seq 1 240); do
               if /system/bin/toybox nc -z -w 1 127.0.0.1 3200 >/dev/null 2>&1; then
-                printf '%s\n' 'http://127.0.0.1:3200'
+                key=${'$'}(proot-distro login debian -- cat "${'$'}WEBUI_DIR/.webui-api-key" 2>/dev/null | tr -d '\r\n')
+                printf '%s\n' 'http://127.0.0.1:3200' "CODEX_WEBUI_KEY:${'$'}key"
                 exit 0
               fi
               sleep 1
             done
-            echo 'Codex 工作台启动超时，请查看 cdesktop.log' >&2
+            echo 'Codex WebUI 启动超时，请查看 codex-webui.log' >&2
             exit 42
         """.trimIndent().replace("${'$'}forceRestart", forceRestart.toString())
-        runTermux(script, "启动 Codex 成熟工作台", returnResult = true, bridgeKind = "codex")
+        runTermux(script, "启动 Codex 官方 WebUI", returnResult = true, bridgeKind = "codex")
     }
 
     fun startHarness(): Result<Unit> = runCatching {
@@ -272,7 +309,7 @@ class TermuxRuntimeManager(private val context: Context) {
               for child in ${'$'}(pgrep -P "${'$'}pid" 2>/dev/null); do kill_tree "${'$'}child"; done
               kill "${'$'}pid" >/dev/null 2>&1 || true
             }
-            for service in codex harness cdesktop; do
+            for service in codex harness codex-webui; do
               pid_file="${'$'}HOME/.codex-harness-mobile/${'$'}service.pid"
               if [ -s "${'$'}pid_file" ]; then
                 pid="${'$'}(cat "${'$'}pid_file")"
@@ -280,7 +317,7 @@ class TermuxRuntimeManager(private val context: Context) {
                 rm -f "${'$'}pid_file"
               fi
             done
-            for pattern in '/usr/bin/dsh web' 'codex app-server' '/cdesktop'; do
+            for pattern in '/usr/bin/dsh web' 'codex app-server' 'codex-webui/dist/main.js'; do
               for old_pid in ${'$'}(pgrep -f "${'$'}pattern" 2>/dev/null); do
                 if [ "${'$'}old_pid" != "${'$'}${'$'}" ]; then kill_tree "${'$'}old_pid"; fi
               done
@@ -293,7 +330,7 @@ class TermuxRuntimeManager(private val context: Context) {
         requireReady()
         // Keep the command on one physical line: Termux receives it through an
         // Intent extra, and the log callback only needs a bounded recent tail.
-        val script = """printf '%s\n' '--- harness.log ---'; tail -n 80 "${'$'}HOME/.codex-harness-mobile/harness.log" 2>/dev/null || true; printf '%s\n' '--- cdesktop.log ---'; tail -n 80 "${'$'}HOME/.codex-harness-mobile/cdesktop.log" 2>/dev/null || true; printf '%s\n' '--- codex.log ---'; tail -n 80 "${'$'}HOME/.codex-harness-mobile/codex.log" 2>/dev/null || true"""
+        val script = """printf '%s\n' '--- harness.log ---'; tail -n 80 "${'$'}HOME/.codex-harness-mobile/harness.log" 2>/dev/null || true; printf '%s\n' '--- codex-webui.log ---'; tail -n 80 "${'$'}HOME/.codex-harness-mobile/codex-webui.log" 2>/dev/null || true; printf '%s\n' '--- codex.log ---'; tail -n 80 "${'$'}HOME/.codex-harness-mobile/codex.log" 2>/dev/null || true"""
         runTermux(script, "读取最近运行日志", returnResult = true, bridgeKind = "logs")
     }
 
@@ -328,7 +365,7 @@ class TermuxRuntimeManager(private val context: Context) {
             d && h -> "工作台与 Harness 已就绪，Codex 服务未启动"
             c -> "Codex 已就绪，Harness 未启动"
             h -> "Harness 已就绪，Codex 未启动"
-            d -> "Codex 工作台已就绪，其他服务未启动"
+            d -> "Codex WebUI 已就绪，其他服务未启动"
             else -> "后端服务未启动"
         }
         val state = LiveRuntimeState(
@@ -372,7 +409,7 @@ class TermuxRuntimeManager(private val context: Context) {
         }
         val endpoints = listOf(
             "Codex app-server" to "http://127.0.0.1:4500/readyz",
-            "Codex 工作台" to "http://127.0.0.1:3200/",
+            "Codex WebUI" to "http://127.0.0.1:3200/",
             "DeepSeek Harness" to "http://127.0.0.1:3080/",
             "公网 HTTPS" to "https://www.gstatic.com/generate_204",
         )

@@ -1,6 +1,6 @@
 # Codex Harness Mobile
 
-一个把 Android 手机、Termux/Debian、Codex CLI、cdesktop 和 DeepSeek Harness 连接起来的移动工作台。
+一个把 Android 手机、Termux/Debian、官方 Codex CLI/app-server 和 DeepSeek Harness 连接起来的移动工作台。
 
 这是一个独立的 Android 项目，和用户已有的 DSH 项目分开维护。它不是 @deepseek-ai/dsh 的源码，也不把 Codex 或 DeepSeek 的密钥、会话数据和服务器代码打包进来；它负责在手机上启动本地运行时、把本地网页嵌入 WebView，并提供适合触摸屏的文件上传、诊断、恢复和导航体验。
 
@@ -11,17 +11,17 @@
 | 项目 | 当前值 |
 |---|---|
 | Android applicationId | app.codexharness.mobile |
-| 当前版本 | 0.5.65 / versionCode 82 |
+| 当前版本 | 0.6.0 / versionCode 83 |
 | 最低 Android 版本 | API 29（Android 10） |
 | 编译 SDK | Android API 36 |
 | UI 技术 | Kotlin + Jetpack Compose + Material 3 |
 | 本地运行时 | Termux + proot-distro Debian |
 | Codex 服务 | Codex app-server 127.0.0.1:4500 |
-| Codex 工作台 | cdesktop 127.0.0.1:3200 |
+| Codex WebUI | LimLLL/codex-webui 127.0.0.1:3200 |
 | DeepSeek Harness | DSH Web 127.0.0.1:3080 |
 | 开源许可 | MIT；第三方组件仍以各自许可证为准 |
 
-当前源码已经在真实 Android ARM64 设备上验证过以下主链路：Termux 命令桥接、Debian 内服务启动、Codex 工作台打开、DeepSeek Harness 打开、DSH 文件选择回传、DSH 下拉菜单、DSH 提问选项、Termux 重开后的服务恢复和可移动浮动工具栏。不同厂商系统的 Termux 后台限制、文件选择器行为和语音识别服务可能不同，首次部署仍应按本文的验收清单逐项验证。
+此前版本已经在真实 Android ARM64 设备上验证过 Termux 命令桥接、DeepSeek Harness 打开、DSH 文件选择回传、下拉菜单、提问选项、Termux 重开后的服务恢复和可移动浮动工具栏。本版本将 Codex 页面切换到维护中的 Linux WebUI，并由官方 Codex app-server/CLI 提供底层能力；首次迁移后应按本文的验收清单重新验证 WebUI 首次安装、自动登录、附件和重启恢复。不同厂商系统的 Termux 后台限制、文件选择器行为和语音识别服务可能不同。
 
 ## 目录
 
@@ -32,7 +32,7 @@
 - [功能清单](#功能清单)
 - [构建 Android APK](#构建-android-apk)
 - [首次配置手机运行时](#首次配置手机运行时)
-- [部署 cdesktop ARM64 组件](#部署-cdesktop-arm64-组件)
+- [安装 Codex WebUI](#安装-codex-webui)
 - [安装和启动 App](#安装和启动-app)
 - [关键实现说明](#关键实现说明)
 - [文件上传为什么可靠](#文件上传为什么可靠)
@@ -51,7 +51,7 @@
 
 1. Android App 不能直接当作普通 Linux shell 使用，需要通过 Termux 的 RUN_COMMAND 服务进入 Debian/proot 环境。
 2. DSH 版本较新时需要 Node.js 的 --expose-internals，而 NODE_OPTIONS 不接受这个参数，启动命令必须直接调用 node --expose-internals /usr/bin/dsh。
-3. cdesktop 的 npm wrapper 首次可能下载大型 ARM64 二进制；手机网络或代理环境下下载会长时间卡住，因此项目支持把经过 SHA-256 校验的组件预置到 cdesktop cache。
+3. Codex WebUI 不是 Android 原生程序，而是在 Debian 里运行的 Linux Node.js 服务；首次启动需要安装依赖并构建前端，后续启动使用本地构建结果，不重复下载。
 4. Android WebView 和桌面浏览器对 vh、触摸事件、文件 URI、键盘和渲染进程的处理不同。网页能显示，不代表菜单、提问卡、文件上传和滚动真的可用。
 5. Termux 被关闭后，旧的 proot/Node 进程可能残留，或者新进程没有正确拿到旧端口和一次性访问 URL，导致 App 看起来像“窗口打不开”。
 
@@ -65,7 +65,7 @@
 │                                                            │
 │  工作台导航 / 诊断 / 浮动工具栏 / 原生 Codex 回退客户端     │
 │       │                         │                         │
-│       ├── CodexDesktopWebScreen ─┐                         │
+│       ├── Codex WebUI WebView ────┐                         │
 │       └── HarnessWebScreen       │ Android WebView          │
 │                                  │                         │
 │  TermuxRuntimeManager ─ RuntimeBridge ─ WebView 回调/状态   │
@@ -83,7 +83,7 @@
 ┌────────────────────────────────────────────────────────────┐
 │ Debian                                                       │
 │  codex app-server :4500                                     │
-│  cdesktop          :3200                                    │
+│  LimLLL Codex WebUI :3200                                │
 │  dsh web           :3080                                    │
 └────────────────────────────────────────────────────────────┘
 ~~~
@@ -101,7 +101,7 @@
 7. Receiver 只接受 127.0.0.1:3080 或 127.0.0.1:3200 的 URL，脱敏日志后写入桥接状态。
 8. App 在 WebView 中打开真实 URL；如果用户随后从网页进入设置、附件或提问流程，WebView 继续保留网页会话。
 
-Codex 工作台的流程相同，只是目标端口为 3200。原生 Codex 回退模式则直接由 CodexWebSocketClient 连接 4500，不依赖 cdesktop 页面。
+Codex WebUI 的流程也使用端口 3200，但首次启动会在 Debian 中固定拉取 LimLLL/codex-webui 的已验证 commit，执行 pnpm 安装、官方 schema 生成和前后端构建。WebUI 自己通过 stdio 启动官方 Codex app-server；App 另外保留 4500 端口的官方 app-server，作为 WebView 不可用时的原生回退模式。这样网页层和协议层彼此独立，网页升级不会替换官方 Codex 后端。
 
 ## 端口和数据流
 
@@ -110,7 +110,7 @@ Codex 工作台的流程相同，只是目标端口为 3200。原生 Codex 回�
 | 地址 | 用途 | 健康检查 | 备注 |
 |---|---|---|---|
 | 127.0.0.1:4500 | Codex app-server | /readyz | 原生回退对话和流式消息 |
-| 127.0.0.1:3200 | cdesktop | / | 多会话 Codex 工作台 |
+| 127.0.0.1:3200 | LimLLL/codex-webui | / | 多会话 Codex WebUI |
 | 127.0.0.1:3080 | DeepSeek Harness | / | 没有 token 的直接访问可能返回 401，这是鉴权正常行为 |
 | https://www.gstatic.com/generate_204 | 公网网络诊断 | HTTP 响应 | 用于区分本地服务正常和外网不可用 |
 
@@ -144,8 +144,9 @@ Codex 工作台的流程相同，只是目标端口为 3200。原生 Codex 回�
 │           └── values/                      # 主题和快捷入口文本
 ├── .tools/
 │   ├── phone.ps1                            # Windows ADB/SSH/截图/远程脚本工具
-│   ├── deploy-cdesktop.ps1                  # 校验并推送 cdesktop ARM64 归档
-│   ├── stage-cdesktop.sh                    # 在 Debian 内写入 cdesktop cache
+│   ├── install-codex-webui.sh               # 在 Debian 中固定版本安装/构建 Codex WebUI
+│   ├── deploy-cdesktop.ps1                  # 历史 cdesktop 部署脚本（迁移后不再需要）
+│   ├── stage-cdesktop.sh                    # 历史 cdesktop 阶段脚本（迁移后不再需要）
 │   ├── startdsh-termux.sh                  # Termux 侧 detached DSH 启动示例
 │   ├── dsh-fix-launch.sh                   # 带 --expose-internals 的启动示例
 │   ├── verify.sh                            # 端口、HTTP、进程和日志验证
@@ -163,19 +164,19 @@ MainActivity.kt 目前集中承载移动端交互和两个 WebView 的包装逻�
 
 ### 运行时和服务生命周期
 
-- 一键启动 Codex app-server、cdesktop 和 DeepSeek Harness。
+- 一键启动 Codex app-server 和 DeepSeek Harness；Codex WebUI 按需首次安装并启动。
 - 以独立 PID 文件和日志文件记录本地进程。
 - 启动前检查 Termux 安装状态和 RUN_COMMAND 权限。
-- Termux 关闭后重新打开 App 时重新探测端口，并清理残留 DSH/cdesktop 进程再恢复服务。
+- Termux 关闭后重新打开 App 时重新探测端口，并清理残留 DSH/WebUI 进程再恢复服务。
 - 启动、停止、恢复和当前工作区重启共用操作锁，连续点击不会重复启动多个进程。
-- Codex、cdesktop 和 Harness 可单独重启，不必让另一个工作区一起中断。
+- Codex WebUI、官方 Codex 回退和 Harness 可单独重启，不必让另一个工作区一起中断。
 - App 退到后台时降低健康轮询频率，回到前台立即刷新。
 - 检测 Termux 是否已忽略电池优化，并提供系统设置入口。
 - 顶部“停止”需要二次确认，避免误触清掉正在运行的任务。
 
 ### Codex
 
-- 优先使用 cdesktop Web 工作台，支持多会话、模型、思考强度、文件、终端、审批和 Git 工作流。
+- 优先使用维护中的 Codex WebUI，支持多会话、模型、思考强度、文件、终端、审批和 Git 工作流。
 - 保留原生 Codex WebSocket 客户端作为轻量回退入口。
 - 原生模式支持初始化、创建线程、流式 assistant 消息、命令审批、历史读取和线程恢复。
 - 保存当前线程 ID，重连后尝试 thread/read 恢复对话。
@@ -210,7 +211,7 @@ MainActivity.kt 目前集中承载移动端交互和两个 WebView 的包装逻�
 ### 诊断和排障
 
 - 显示网络类型、网络是否可用、是否通过系统验证、Termux 权限和本地端口。
-- 可读取 Harness、cdesktop、Codex 三份日志最近 80 行。
+- 可读取 Harness、Codex WebUI、Codex 三份日志最近 80 行。
 - 诊断摘要和日志支持复制、系统分享，并对一次性 token 做脱敏。
 - 显示附件暂存文件数量、空间占用和超过 24 小时的缓存。
 - 可清理旧附件缓存，不会删除 Codex/Harness 的会话和配置。
@@ -264,7 +265,7 @@ chmod +x gradlew
 app/build/outputs/apk/debug/app-debug.apk
 ~~~
 
-调试构建不包含 cdesktop 二进制、Termux rootfs、Codex 登录信息或 DeepSeek API Key。gitignore 会排除 Gradle 缓存、SDK/JDK 压缩包、APK、临时阶段目录、根目录调试截图和本地日志。
+调试构建不包含 Codex WebUI 源码、Termux rootfs、Codex 登录信息或 DeepSeek API Key。gitignore 会排除 Gradle 缓存、SDK/JDK 压缩包、APK、临时阶段目录、根目录调试截图和本地日志。
 
 ## 首次配置手机运行时
 
@@ -281,7 +282,7 @@ termux-setup-storage
 然后在 Android 系统设置中允许 Termux：
 
 - 后台运行或忽略电池优化（不同厂商名称不同）。
-- 存储访问（如果要使用 /sdcard/Download 里的脚本或 cdesktop 归档）。
+- 存储访问（如果要从 /sdcard/Download 复制初始化脚本）。
 - 本项目需要的外部 App 命令权限。App 首页也会提示当前权限状态。
 
 ### 2. 开启 Termux 外部命令桥
@@ -366,57 +367,40 @@ NODE_OPTIONS=--expose-internals dsh web
 
 原因是 NODE_OPTIONS 会拒绝这个参数。App 内部的启动命令已经把参数放在 node 后面，并会把进程以 detached 方式运行。
 
-## 部署 cdesktop ARM64 组件
+## 安装 Codex WebUI
 
-cdesktop npm 包本身只是 wrapper，首次运行会尝试取得较大的 Rust ARM64 组件。如果手机网络环境会把下载卡在很低的进度，可以使用项目提供的离线阶段流程。
+当前版本不再依赖 cdesktop 的 ARM64 压缩包。Codex 页面使用维护中的
+[LimLLL/codex-webui](https://github.com/LimLLL/codex-webui)，运行在 Debian 的 Node.js
+环境中，端口仍保持为 3200，所以 DSH 的 3080 和既有手机工作区布局不需要改变。
 
-### 组件位置
+App 第一次点击“启动 Codex WebUI”时会自动执行以下流程：
 
-wrapper 查找的目标目录是：
+1. 检查 Debian 是否已经有 Node.js、git 和 pnpm；缺少时给出日志提示，先运行 `bootstrap-debian.sh`。
+2. 把上游仓库固定到 `e98ee58ac8c80780258474e0f13ca67a463a2726`，避免每次安装得到不可复现的 HEAD。
+3. 执行 `pnpm install --frozen-lockfile`，生成官方 Codex app-server TypeScript schema。
+4. 构建 `web/` 前端和 Nest/Fastify 后端，把静态页面放到 WebUI 的 `public/` 目录。
+5. 在 Debian 本地生成随机 WebUI API Key，保存为权限受限的 `.webui-api-key` 和 `.env`。
+6. 启动 WebUI；Android 通过 Termux 回调拿到本地 key 后自动请求 `/api/auth/login`，把 JWT 放入 WebView 的 session storage。
 
-~~~text
-~/.cdesktop/bin/v0.2.3-20260519022845/linux-arm64/
-~~~
+### 手动安装
 
-需要的归档名称：
-
-~~~text
-cdesktop.zip
-cdesktop-mcp.zip
-cdesktop-review.zip
-~~~
-
-这些归档不提交到 GitHub。请从 cdesktop 官方发布物取得与脚本中 tag 对应的 ARM64 归档，并先核对 .tools/deploy-cdesktop.ps1 中的 SHA-256。不要把来源不明的可执行文件推送到手机或仓库。
-
-### Windows 推送和校验
-
-.tools/deploy-cdesktop.ps1 会自动从 ANDROID_ADB、ANDROID_HOME、ANDROID_SDK_ROOT 或 PATH 找 adb，不会依赖某台电脑的绝对路径。
-
-~~~powershell
-$env:ANDROID_HOME = "C:\Path\To\Android\Sdk"
-$env:ANDROID_ADB = Join-Path $env:ANDROID_HOME "platform-tools\adb.exe"
-
-New-Item -ItemType Directory -Force "$env:TEMP\cdesktop-probe" | Out-Null
-
-.\.tools\deploy-cdesktop.ps1
-~~~
-
-脚本会：
-
-1. 检查 ADB 设备。
-2. 检查三个 zip 是否存在。
-3. 对每个 zip 计算 SHA-256。
-4. 推送到手机的 /sdcard/Download/cdesktop/。
-5. 推送 .tools/stage-cdesktop.sh。
-6. 可选安装当前调试 APK。
-
-在 Termux 中执行阶段脚本：
+如果希望先在 Termux 中观察完整安装日志，可以把 `.tools/install-codex-webui.sh`
+复制进 Debian 后运行：
 
 ~~~bash
-bash /sdcard/Download/cdesktop/stage-cdesktop.sh
+chmod +x /path/to/install-codex-webui.sh
+bash /path/to/install-codex-webui.sh
 ~~~
 
-它会把归档绑定到 Debian，写入 ~/.cdesktop/bin/<tag>/linux-arm64/，解压并设置执行权限，再安装 cdesktop@0.2.3 wrapper。这样 App 启动 cdesktop 时优先使用本地静态 ARM64 二进制，避免把首次运行依赖在一次不稳定的网络下载上。
+默认安装目录和运行文件为：
+
+~~~text
+/root/.codex-harness-mobile/codex-webui/
+/root/.codex-harness-mobile/codex-webui/.env
+/root/.codex-harness-mobile/codex-webui/.webui-api-key
+~~~
+
+首次构建可能需要几分钟，取决于手机 CPU、存储和网络；构建完成后，后续启动不会重复安装。这个目录包含第三方 AGPL-3.0-or-later WebUI 的运行源码和依赖，公共 Android 仓库只提供安装脚本和接入层，不把它复制进 APK。
 
 ## 安装和启动 App
 
@@ -433,7 +417,7 @@ adb shell am start -n app.codexharness.mobile/.MainActivity
 首次启动建议按这个顺序：
 
 1. 在 App 首页确认 Termux 已安装、命令权限已授予、网络状态正常。
-2. 点击 Codex 工作台“启动并打开”，第一次 cdesktop 启动可能需要等待 Rust 后端初始化。
+2. 点击 Codex WebUI“启动并打开”，第一次会在 Debian 中下载依赖并构建前后端，可能需要几分钟；构建日志在 codex-webui.log。
 3. 点击 DeepSeek Harness“启动并打开”，等待 3080 和一次性 URL 回调。
 4. 如果 Harness 页面没有打开，先进入“连接诊断”，读取 harness.log，不要直接重复点击几十次启动按钮。
 5. 在 DSH 内先测试模型下拉菜单和提问卡，再测试附件选择；这样能区分 WebView 布局问题和 API 鉴权问题。
@@ -446,7 +430,7 @@ adb shell am start -n app.codexharness.mobile/.MainActivity
 
 - 使用 com.termux.app.RunCommandService 发送 /data/data/com.termux/files/usr/bin/bash -lc <script>。
 - 通过 PendingIntent 接收需要 URL/日志结果的命令回调。
-- 维护 Codex、cdesktop、Harness 的启动、重启、停止和 PID 清理脚本。
+- 维护官方 Codex、Codex WebUI、Harness 的启动、重启、停止和 PID 清理脚本。
 - 用本机 HTTP 探测检查 4500、3200、3080。
 - 将 401–403 的本地响应标记为“服务可达但需要 token”。
 - 读取网络传输类型和系统网络验证状态。
@@ -594,7 +578,7 @@ WebView 启用手势滚动、内部滚动容器和键盘布局；App 的浮动�
 
 1. App 回到前台时重新检查 Termux、4500、3200、3080 和网络状态。
 2. 如果用户点击 Harness 的“启动并打开”，先读取现有日志中的 URL 和端口状态。
-3. 强制重启时递归清理 pid 文件对应的进程树，并扫描明确的 DSH/cdesktop 命令行，避免旧进程占住端口。
+3. 强制重启时递归清理 pid 文件对应的进程树，并扫描明确的 DSH/WebUI 命令行，避免旧进程占住端口。
 4. 重新以 nohup setsid proot-distro login debian 启动，标准输入重定向到 /dev/null，日志写入持久目录。
 5. 等待端口和日志中的 URL 真正出现，命令超时才释放 UI 锁。
 6. 通过回调把新 URL 返回给 App，WebView 再加载新页面。
@@ -603,7 +587,7 @@ WebView 启用手势滚动、内部滚动容器和键盘布局；App 的浮动�
 
 ~~~text
 ~/.codex-harness-mobile/codex.log
-~/.codex-harness-mobile/cdesktop.log
+~/.codex-harness-mobile/codex-webui.log
 ~/.codex-harness-mobile/harness.log
 ~/.codex-harness-mobile/*.pid
 ~~~
@@ -619,7 +603,7 @@ WebView 启用手势滚动、内部滚动容器和键盘布局；App 的浮动�
 - FileProvider 只开放 cache/webview-upload/，不开放整个 /data/data/... 目录。
 - 语音输入调用 Android 系统 RecognizerIntent，App 不录制或保存音频；设备没有可用识别器时会提示用户。
 - 通知权限默认不申请。后台完成提醒需要用户主动打开。
-- cdesktop 归档、APK、SDK/JDK、Termux APK、手机截图和运行日志不应该提交到公共仓库。
+- WebUI node_modules、APK、SDK/JDK、Termux APK、手机截图和运行日志不应该提交到公共仓库。
 - .tools 中的 pkill、进程树清理和远程脚本会修改手机运行时；执行前请确认设备和目标环境，不要把它们当成通用服务器部署脚本。
 
 ## 调试与验收
@@ -664,7 +648,7 @@ curl -i --max-time 5 http://127.0.0.1:3080/
 
 | 场景 | 预期 |
 |---|---|
-| 冷启动 App | 状态页能区分 Termux、Codex、cdesktop、Harness 是否在线 |
+| 冷启动 App | 状态页能区分 Termux、Codex、Codex WebUI、Harness 是否在线 |
 | 启动 Harness | 3080 就绪后收到带 token 的本地 URL 并打开网页 |
 | 关闭再打开 Termux | 点击恢复后不会因旧 pid 或 EADDRINUSE 永久打不开 |
 | DSH 模型/权限/更多菜单 | 下拉层可见、可滚动、可触摸 |
@@ -729,16 +713,16 @@ curl -i --max-time 5 http://127.0.0.1:3080/
 
 这通常是旧页面仍在 WebView 中，或者移动兼容 CSS 尚未重新注入。先点当前工作区刷新；若仍不行，关闭当前网页后重新打开 Harness。确认是最新 APK，并查看 HarnessWebView 日志中 onPageFinished 和 viewport 修复是否执行。提问卡重点检查标题是否过长、visual viewport 是否为 0。
 
-### cdesktop 首次启动卡在下载进度
+### Codex WebUI 首次启动失败或停在安装
 
-用 .tools/deploy-cdesktop.ps1 校验并推送三个 ARM64 zip，再执行 stage-cdesktop.sh。确认目标目录中同时存在 zip 和解压后的可执行文件。不要把 .stage/ 或归档提交到 GitHub；它们体积大且与设备架构绑定。
+先查看 `codex-webui.log`，确认 Debian 中的 Node.js、git、corepack/pnpm 和 build-essential 已安装。也可以进入 Debian 手动执行 `.tools/install-codex-webui.sh`，完整观察 `pnpm install`、schema 生成和前后端构建错误。不要删除 `.webui-api-key`，否则 WebView 的自动登录 key 会改变；如果确实删除了，需要重启 WebUI 并让 App 重新获取回调。
 
 ### 出现 EADDRINUSE
 
 先在 App 里执行当前工作区“重启”，再查看对应 pid/log。必要时在 Termux 中确认：
 
 ~~~bash
-ps -A -o PID,PPID,ARGS | grep -Ei 'dsh|cdesktop|codex|proot' | grep -v grep
+ps -A -o PID,PPID,ARGS | grep -Ei 'dsh|codex-webui|codex|proot' | grep -v grep
 ~~~
 
 不要随便杀掉整个 Termux；使用项目的进程树清理逻辑可以减少误伤其他 Termux 任务。
@@ -760,7 +744,7 @@ Android 设备需要安装并启用系统语音识别服务。App 没有录音�
 3. 执行 assembleDebug 和 lintDebug。
 4. 在至少一台真实 ARM64 手机完成冷启动、Termux 重启、DSH 菜单、提问卡和文件上传验收。
 5. 检查 git diff --check。
-6. 检查待提交文件，确保没有 APK、token、API Key、截图、JDK、Gradle 分发包和 cdesktop zip。
+6. 检查待提交文件，确保没有 APK、token、API Key、截图、JDK、Gradle 分发包或 WebUI node_modules。
 7. 创建提交和 tag，再推送到独立的 GitHub 仓库。
 
 示例：
@@ -770,12 +754,12 @@ git status --short --untracked-files=all
 git diff --check
 git add README.md NEXT-SESSION.md app .tools bootstrap-*.sh enable-termux-bridge.sh
 git diff --cached --stat
-git commit -m "release: Codex Harness Mobile 0.5.65"
-git tag v0.5.65
+git commit -m "release: Codex Harness Mobile 0.6.0"
+git tag v0.6.0
 git push origin main --follow-tags
 ~~~
 
-公共仓库只发布 Android 壳和可复现的脚本/文档，不发布用户运行时数据。若要生成可供他人下载的 APK，建议另建 GitHub Actions release 流程，并在 release 说明中明确它不包含 Termux、Debian、Codex 登录或 DeepSeek Key。
+公共仓库只发布 Android 壳和可复现的脚本/文档，不发布用户运行时数据。推送 `v*` tag 会触发 `.github/workflows/release.yml`，自动构建 debug APK、运行 lint，并把 `CodexHarnessMobile-<version>.apk` 附加到 GitHub Release；APK 不包含 Termux、Debian、Codex 登录或 DeepSeek Key。
 
 ## 贡献代码
 
@@ -801,7 +785,7 @@ git diff --check
 本仓库中原创 Android 壳、运行时桥接和文档按根目录 LICENSE 的 MIT License 发布。依赖库和外部运行时不因此改变许可证：
 
 - AndroidX、Jetpack Compose、Kotlin、OkHttp、Kotlin Coroutines：遵循各自项目许可证。
-- cdesktop：使用其官方发布的组件和许可证；本仓库不重新分发其大型 ARM64 二进制。
+- LimLLL/codex-webui：运行时按固定 commit 从其公开仓库安装，遵循 AGPL-3.0-or-later；本仓库不把其源码或 node_modules 重新打包进 APK。
 - Codex CLI 和 DeepSeek Harness：由用户在自己的 Debian/Termux 环境安装，许可证、服务条款和账号凭据由各自项目/服务负责。
 
 如果把本项目与第三方二进制或内部部署脚本一起分发，请额外保留第三方 NOTICE、版权和使用条款。
