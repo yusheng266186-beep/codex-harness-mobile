@@ -1,4 +1,4 @@
-# 交接文档（2026-09-22 继续）
+# 交接文档（2026-09-23 更新）
 
 App 版本 **0.6.1**（versionCode 84）。本轮保留 DSH 3080 及全部 Android WebView 兼容层，Codex 页面从旧 cdesktop 切换到维护中的 LimLLL/codex-webui；底层仍由官方 Codex CLI/app-server 提供能力，并保留 4500 端口的原生 WebSocket 回退。首次点击 Codex WebUI 时，App 会在 Debian 中固定 commit、安装 pnpm 依赖、生成官方 schema、构建前后端、生成设备本地 API Key 并自动登录 WebView。此前已完成的附件缓存管理、窄屏专注模式、当前工作区服务重启、诊断分享、返回键关闭保护、小屏弹窗布局、按工作区保存工具栏位置、WebView 渲染自愈、网页 `capture` 图片输入相机回传、桌面图标快捷入口、系统分享文字导入、原生 Codex 语音输入和 DSH 移动端适配均保持不变。
 
@@ -11,7 +11,7 @@ App 版本 **0.6.1**（versionCode 84）。本轮保留 DSH 3080 及全部 Andro
 - **附件链路**：LimLLL WebUI 的上传接口会把文件落到 Linux 文件系统，随后把可读路径交给官方 app-server；Android 仍负责 DSH 的 content URI 暂存和 FileProvider 权限。
 - **首次构建注意**：第一次安装会下载 Node 依赖并编译 `better-sqlite3`、`node-pty` 等原生模块，手机上可能需要几分钟；构建失败时先看 `codex-webui.log`，不要反复点启动。
 
-本轮新代码已经完成 Android 编译级检查；真机上的首次 WebUI 构建、自动登录、附件、多会话和 Termux 重开回归仍需在 ADB 设备上完成。
+0.6.1 已完成本机 `assembleDebug`、`lintDebug`，GitHub Actions 的 Android build 与 release 工作流也都通过，APK 已发布。当前 ADB 设备列表为空，因此新 WebUI 的首次手机端构建、自动登录、附件、多会话和 Termux 重开回归仍待设备连接后验收。
 
 ---
 
@@ -22,7 +22,7 @@ App 版本 **0.6.1**（versionCode 84）。本轮保留 DSH 3080 及全部 Andro
 | **DSH 启动** | ✅ | `node --expose-internals /usr/bin/dsh web --no-open --port 3080`，App 自动启动后 3080 在 5–6 秒内就绪 |
 | **DSH 界面** | ✅ | 完整加载：侧栏、对话/轨迹标签、输入框、状态栏、历史数据完好 |
 | **Codex（旧 cdesktop 基线）** | ✅（历史） | `Main server on :3200`，作为迁移前回退证据保留 |
-| **Codex WebUI 迁移** | ⏳ | Android 编译级检查已通过；待真机首次 pnpm 构建、自动登录、附件和重开验证 |
+| **Codex WebUI 迁移** | ✅ 发布 / ⏳ 实机首启 | 0.6.1 APK 已发布，源码和 GitHub Actions 均通过；待连接设备验证手机首次 pnpm 构建、自动登录、附件和 Termux 重开 |
 | **Termux 回调链路** | ✅ | `I TermuxResultReceiver: result received: url=http://127.0.0.1:3080/?token=...` |
 | **Termux 重开后恢复 DSH** | ✅ | 关闭/重开 Termux 后自动重新 dispatch，3080 恢复，无 `EADDRINUSE` |
 | **WebView 手机布局** | ✅ | 真机已验证 Harness 主界面、输入框和附件按钮可见，键盘弹出时页面不塌陷 |
@@ -252,6 +252,6 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
          66 files, 0.18 MB
 ```
 
-这个提交固定了「编译通过、两个界面在真机上可用」的状态，可作为回退点。本轮改动在其上继续进行；`git diff --check` 和 `assembleDebug + lintDebug` 已通过，0.5.65 的系统分享文字导入、桌面图标快捷入口、手机相机附件回传、原生 Codex 语音输入、按工作区网页缩放、错误详情 token 脱敏、可选沉浸模式、420dp 窄屏阈值、WebView 渲染自愈、按工作区保存工具栏位置、弹窗高度响应式、返回键关闭保护、诊断分享、当前工作区服务重启、窄屏专注工具栏、附件缓存管理、网页错误详情复制、原生 Codex 紧凑操作栏、网络切换即时刷新、对话内查找、后台完成通知、整段对话分享、原生 Codex 对话恢复、存储保护、网络状态显示、附件取消、严格暂存校验以及前面功能的真机回归均已写入源码。
+这个提交固定了迁移前「编译通过、两个界面在真机上可用」的状态，可作为历史回退点。当前 `main` 与 `mobile-github/main` 对齐于 `ac4a255`，标签 `v0.6.1` 指向同一提交；本地 `assembleDebug + lintDebug`、GitHub Actions 的 Android build 与 release 均已通过。APK：<https://github.com/yusheng266186-beep/codex-harness-mobile/releases/download/v0.6.1/CodexHarnessMobile-0.6.1.apk>；发布页：<https://github.com/yusheng266186-beep/codex-harness-mobile/releases/tag/v0.6.1>。当前电脑的 `adb devices -l` 没有设备；连接手机后优先验证 WebUI 首次安装/自动登录、上传文件、切换会话、关闭并重开 Termux 后恢复，以及 DSH 下拉菜单和提问卡。
 
 `.tools/oneoff-file-recovery/` 里是我修复文件编码时用的一次性脚本（含 dex 字符串提取与逐行还原）——**正常情况下不需要再跑**，保留仅供追溯。`.tools/` 根目录下的其余脚本是常用的设备调试工具。
