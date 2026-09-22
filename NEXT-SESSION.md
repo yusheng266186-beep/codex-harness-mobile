@@ -164,6 +164,13 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 
 ## 七、仓库状态
 
-`.gitignore` 已建立（排除约 570MB 构建产物与调试截图），但**仓库仍无任何提交**，所有文件都是 untracked。建议接手后先做一次初始提交，把当前这个「编译通过、两个界面可用」的状态固定下来。
+`.gitignore` 已建立（排除约 570MB 构建产物与调试截图），**并已完成首次提交**：
 
-`.tools/` 里除了调试工具，还有我这次用来修复文件编码的一次性脚本（`repair-mainactivity.js`、`fix-lines.js`、`fix-commas.js` 等）——**正常情况下不需要再跑**，保留仅供追溯。
+```
+20ffee1  baseline: CodexHarness Mobile 0.5.9 - Harness and Codex(cdesktop) both working on device
+         66 files, 0.18 MB
+```
+
+这个提交固定了「编译通过、两个界面在真机上可用」的状态，可作为回退点。工作树当前干净。
+
+`.tools/oneoff-file-recovery/` 里是我修复文件编码时用的一次性脚本（含 dex 字符串提取与逐行还原）——**正常情况下不需要再跑**，保留仅供追溯。`.tools/` 根目录下的其余脚本是常用的设备调试工具。
