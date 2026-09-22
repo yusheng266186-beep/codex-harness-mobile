@@ -19,7 +19,16 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $root    = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$adb     = 'D:\Android\Sdk\platform-tools\adb.exe'
+$adbCandidates = @()
+if ($env:ANDROID_ADB) { $adbCandidates += $env:ANDROID_ADB }
+if ($env:ANDROID_HOME) { $adbCandidates += (Join-Path $env:ANDROID_HOME 'platform-tools\adb.exe') }
+if ($env:ANDROID_SDK_ROOT) { $adbCandidates += (Join-Path $env:ANDROID_SDK_ROOT 'platform-tools\adb.exe') }
+$adbCommand = Get-Command adb -ErrorAction SilentlyContinue
+if ($adbCommand) { $adbCandidates += $adbCommand.Source }
+$adb = $adbCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+if (-not $adb) {
+    throw '找不到 adb。请设置 ANDROID_HOME/ANDROID_SDK_ROOT，或把 platform-tools 加入 PATH。'
+}
 $stage   = Join-Path $root '.stage'
 $tag     = 'v0.2.3-20260519022845'
 $work    = "$env:TEMP\cdesktop-probe"

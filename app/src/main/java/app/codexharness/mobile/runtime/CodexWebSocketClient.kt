@@ -57,6 +57,8 @@ class CodexWebSocketClient(context: Context) {
         private set
     var busy by mutableStateOf(false)
         private set
+    var restoring by mutableStateOf(false)
+        private set
     var activeTurnId by mutableStateOf<String?>(null)
         private set
     var statusText by mutableStateOf("未连接")
@@ -116,6 +118,7 @@ class CodexWebSocketClient(context: Context) {
                         connecting = false
                         connected = false
                         busy = false
+                        restoring = false
                         activeTurnId = null
                         statusText = "连接已关闭"
                     }
@@ -126,6 +129,7 @@ class CodexWebSocketClient(context: Context) {
                         connecting = false
                         connected = false
                         busy = false
+                        restoring = false
                         activeTurnId = null
                         statusText = "连接失败：${t.message ?: "服务未启动"}"
                     }
@@ -140,6 +144,7 @@ class CodexWebSocketClient(context: Context) {
         connected = false
         connecting = false
         busy = false
+        restoring = false
         activeTurnId = null
         statusText = "未连接"
     }
@@ -148,7 +153,9 @@ class CodexWebSocketClient(context: Context) {
         threadId = null
         queuedText = null
         approval = null
+        restoring = false
         activeTurnId = null
+        preferences.edit().remove("active_thread_id").apply()
         messages.clear()
         statusText = if (connected) "已连接，可开始新对话" else "未连接"
     }
@@ -171,11 +178,13 @@ class CodexWebSocketClient(context: Context) {
     }
 
     fun resumeThread(summary: CodexThreadSummary) {
-        if (!connected || busy) return
+        if (!connected || busy || restoring) return
         loadingThreads = false
         messages.clear()
         approval = null
         threadId = summary.id
+        preferences.edit().putString("active_thread_id", summary.id).apply()
+        restoring = true
         sendJson(
             JSONObject()
                 .put("method", "thread/resume")
@@ -202,6 +211,10 @@ class CodexWebSocketClient(context: Context) {
         if (clean.isEmpty() || busy) return
         if (!connected) {
             statusText = "请先启动并连接 Codex"
+            return
+        }
+        if (restoring) {
+            statusText = "正在恢复上次对话，请稍候…"
             return
         }
         messages += CodexUiMessage("user", clean)
@@ -282,7 +295,13 @@ class CodexWebSocketClient(context: Context) {
             when {
                 json.has("id") && json.has("error") -> {
                     busy = false
-                    if (json.optInt("id", -1) == 20) loadingThreads = false
+                    val failedRequestId = json.optInt("id", -1)
+                    if (failedRequestId == 21 || failedRequestId == 22) {
+                        restoring = false
+                        threadId = null
+                        preferences.edit().remove("active_thread_id").apply()
+                    }
+                    if (failedRequestId == 20) loadingThreads = false
                     val message = json.optJSONObject("error")?.optString("message").orEmpty()
                     messages += CodexUiMessage(
                         "system",
@@ -297,10 +316,27 @@ class CodexWebSocketClient(context: Context) {
                     statusText = "Codex 已连接"
                     sendJson(JSONObject().put("method", "initialized").put("params", JSONObject()))
                     loadThreads()
+                    val savedThreadId = preferences.getString("active_thread_id", null)?.takeIf { it.isNotBlank() }
+                    if (savedThreadId == null) {
+                        restoring = false
+                    } else {
+                        threadId = savedThreadId
+                        messages.clear()
+                        approval = null
+                        restoring = true
+                        statusText = "正在恢复上次对话…"
+                        sendJson(
+                            JSONObject()
+                                .put("method", "thread/read")
+                                .put("id", 22)
+                                .put("params", JSONObject().put("threadId", savedThreadId)),
+                        )
+                    }
                 }
 
                 json.optInt("id", -1) == 1 && json.has("result") -> {
                     threadId = json.getJSONObject("result").getJSONObject("thread").getString("id")
+                    preferences.edit().putString("active_thread_id", threadId).apply()
                     queuedText?.let(::startTurn)
                 }
 
@@ -321,6 +357,7 @@ class CodexWebSocketClient(context: Context) {
                 }
 
                 json.optInt("id", -1) == 21 && json.has("result") -> {
+                    restoring = true
                     sendJson(
                         JSONObject()
                             .put("method", "thread/read")
@@ -332,6 +369,7 @@ class CodexWebSocketClient(context: Context) {
 
                 json.optInt("id", -1) == 22 && json.has("result") -> {
                     restoreThreadMessages(json.optJSONObject("result") ?: JSONObject())
+                    restoring = false
                     statusText = "已恢复，可继续对话"
                 }
 

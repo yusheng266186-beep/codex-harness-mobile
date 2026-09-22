@@ -18,6 +18,9 @@ jdk17/
 # --- Staged cdesktop binaries (160 MB; rebuilt by .tools/deploy-cdesktop.ps1) ---
 .stage/
 
+# --- Local debug logs ---
+.tools/*.log
+
 # --- Debug captures produced while driving the phone over adb ---
 # Only at the repo root: never touch resources under app/src/.
 /*.png

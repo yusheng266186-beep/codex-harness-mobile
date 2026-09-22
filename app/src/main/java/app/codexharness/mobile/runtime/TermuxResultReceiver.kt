@@ -17,6 +17,13 @@ object CodexDesktopBridgeState {
     var url by mutableStateOf<String?>(null)
 }
 
+object TermuxCommandState {
+    var lastLabel by mutableStateOf<String?>(null)
+    var lastOutput by mutableStateOf<String?>(null)
+    var lastSucceeded by mutableStateOf<Boolean?>(null)
+    var completedAt by mutableStateOf<Long?>(null)
+}
+
 /**
  * Receives the result of a Termux RUN_COMMAND invocation.
  *
@@ -27,8 +34,9 @@ object CodexDesktopBridgeState {
  * the broadcast while `am broadcast` still reports success.
  *
  * Safety comes from what is accepted: only a loopback URL on the two known
- * local-service ports is ever turned into a page load, and the sender's uid is
- * verified to be Termux.
+ * local-service ports is ever turned into a page load. This receiver does not
+ * claim to authenticate arbitrary broadcast senders; the callback is expected
+ * to arrive through the PendingIntent owned by the app.
  */
 class TermuxResultReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -51,12 +59,25 @@ class TermuxResultReceiver : BroadcastReceiver() {
 
         val output = values.joinToString("\n")
         val url = URL_PATTERN.find(output)?.value?.trimEnd(',', '.', ')', ']', '"', '\'')
+        val safeOutput = redactSecrets(output)
 
-        Log.i(TAG, "result: kind=${intent.getStringExtra(BRIDGE_KIND_EXTRA)} url=$url output=${output.take(400)}")
+        val bridgeKind = intent.getStringExtra(BRIDGE_KIND_EXTRA)
+        TermuxCommandState.lastOutput = safeOutput.take(8_000).ifBlank { null }
+        TermuxCommandState.lastSucceeded = if (bridgeKind == "logs") safeOutput.isNotBlank() else url != null
+        TermuxCommandState.completedAt = System.currentTimeMillis()
 
-        when (intent.getStringExtra(BRIDGE_KIND_EXTRA)) {
-            "codex" -> CodexDesktopBridgeState.url = url
-            else -> HarnessBridgeState.url = url
+        Log.i(TAG, "result: kind=$bridgeKind url=${url?.let(::redactSecrets)} output=${safeOutput.take(400)}")
+
+        when (bridgeKind) {
+            "codex" -> {
+                if (url != null) CodexDesktopBridgeState.url = url
+                else Log.w(TAG, "codex command returned no loopback URL; keeping the current window")
+            }
+            "logs" -> Unit
+            else -> {
+                if (url != null) HarnessBridgeState.url = url
+                else Log.w(TAG, "harness command returned no loopback URL; keeping the current window")
+            }
         }
     }
 
@@ -67,6 +88,11 @@ class TermuxResultReceiver : BroadcastReceiver() {
         val URL_PATTERN = Regex(
             "https?://(?:127\\.0\\.0\\.1|localhost):(3080|3200)(?:/[^\\s\"']*)?",
             RegexOption.IGNORE_CASE,
+        )
+
+        fun redactSecrets(value: String): String = value.replace(
+            Regex("(?i)(token=)[^\\s&]+"),
+            "$1…",
         )
     }
 }

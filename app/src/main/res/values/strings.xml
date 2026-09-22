@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_codex_short">Codex</string>
+    <string name="shortcut_codex_long">打开 Codex 工作台</string>
+    <string name="shortcut_harness_short">Harness</string>
+    <string name="shortcut_harness_long">打开 DeepSeek Harness</string>
+    <string name="shortcut_diagnostics_short">诊断</string>
+    <string name="shortcut_diagnostics_long">打开连接诊断</string>
+</resources>

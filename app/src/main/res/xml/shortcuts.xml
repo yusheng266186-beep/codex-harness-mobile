@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="open_codex"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_codex_short"
+        android:shortcutLongLabel="@string/shortcut_codex_long">
+        <intent
+            android:action="app.codexharness.mobile.OPEN_CODEX"
+            android:targetPackage="app.codexharness.mobile"
+            android:targetClass="app.codexharness.mobile.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_harness"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_harness_short"
+        android:shortcutLongLabel="@string/shortcut_harness_long">
+        <intent
+            android:action="app.codexharness.mobile.OPEN_HARNESS_SHORTCUT"
+            android:targetPackage="app.codexharness.mobile"
+            android:targetClass="app.codexharness.mobile.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_diagnostics"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_diagnostics_short"
+        android:shortcutLongLabel="@string/shortcut_diagnostics_long">
+        <intent
+            android:action="app.codexharness.mobile.OPEN_DIAGNOSTICS"
+            android:targetPackage="app.codexharness.mobile"
+            android:targetClass="app.codexharness.mobile.MainActivity" />
+    </shortcut>
+</shortcuts>

@@ -1,6 +1,6 @@
-# 交接文档（2026-09-22 11:30）
+# 交接文档（2026-09-22 12:15）
 
-App 版本 **0.5.9**（versionCode 26），已装在手机上。源码全部干净（无编码损坏、无裸 CR）。
+App 版本 **0.5.65**（versionCode 82）。本轮在附件缓存管理、窄屏专注模式、当前工作区服务重启、诊断分享、返回键关闭保护、小屏弹窗布局、按工作区保存工具栏位置和 WebView 渲染自愈之外，新增网页 `capture` 图片输入的手机相机回传、桌面图标快捷入口、系统分享文字导入和原生 Codex 语音输入；长按图标可直接打开 Codex、Harness 或连接诊断，其他 App 分享文字时可直接预填原生 Codex 输入框，点击麦克风可用系统语音识别填入 Codex 草稿，并保留可选沉浸模式、420dp 窄屏收缩、Codex/Harness 独立网页文字缩放和错误详情 token 脱敏：专注模式工具栏可以隐藏 Android 系统栏以释放更多网页空间，系统手势仍可临时呼出，进入后台或离开专注模式时自动恢复。同时保留原生 Codex 紧凑操作栏、网络切换即时刷新、原生 Codex 对话内查找、后台完成通知、整段分享、原生 Codex 对话恢复、手机存储保护、实时网络状态、附件取消、严格暂存校验、附件进度反馈和前面已完成的手机端适配功能。
 
 ---
 
@@ -13,43 +13,107 @@ App 版本 **0.5.9**（versionCode 26），已装在手机上。源码全部干�
 | **Codex（cdesktop）** | ✅ | `Main server on :3200`，界面显示「欢迎回来」、文件夹选择、模型开关 `GPT-5.5 · 极高` |
 | **cdesktop 二进制** | ✅ | 静态 AArch64（无 glibc 依赖）在 proot 里正常运行，启动约 72 秒 |
 | **Termux 回调链路** | ✅ | `I TermuxResultReceiver: result received: url=http://127.0.0.1:3080/?token=...` |
+| **Termux 重开后恢复 DSH** | ✅ | 关闭/重开 Termux 后自动重新 dispatch，3080 恢复，无 `EADDRINUSE` |
+| **WebView 手机布局** | ✅ | 真机已验证 Harness 主界面、输入框和附件按钮可见，键盘弹出时页面不塌陷 |
+| **DSH 下拉菜单** | ✅ | 修复 Android WebView 中 `100vh` 被解析为 0 导致菜单高度为 0；模型、权限、顶部更多菜单均已真机验证可展开 |
+| **手机专注模式** | ✅ | 打开 Codex/Harness 网页后隐藏 App 顶栏、底栏和包装栏；工具入口默认在右侧中部，并支持在安全区域内按住拖到屏幕任意位置，避免遮挡 DSH 控件 |
+| **连接诊断** | ⏳ | 新版源码已实现网络类型、Termux 权限、4500/3200/3080 本地端口、公网 HTTPS 和 Termux 回调成功/失败结果检测；本地 Harness 无 token 的预期 401 已改为“服务可达，需要访问令牌”；待 ADB 重连后点击验证 |
+| **DSH 提问选项** | ✅ | 修复 Android WebView 将 DSH 卡片的 `60vh` 上限解析为 0，导致卡片只剩底部 10px、选项和提交按钮不可触摸；同时保留标题限高、内部滚动和换行 |
+| **网页加载反馈** | ✅ | Codex/Harness WebView 显示真实加载进度和页面名称；主页面错误时保留明确的重新加载入口 |
+| **专注模式刷新** | ✅ | 隐藏原生工具栏后，仍可从浮动工具栏刷新当前 Codex/Harness WebView，并复用加载进度反馈 |
+| **前台恢复** | ✅ | App 从后台回到前台立即重查 Termux、端口和回调地址，不必等待轮询周期 |
+| **长任务屏幕常亮** | ✅ | 专注模式工具栏可选保持屏幕常亮，适合等待长时间任务；默认关闭并记住用户选择 |
+| **文件选择回传** | ✅ | MIUI 文件选择器可打开；选择结果经过 URI 解析、缓存暂存和 FileProvider 回传 |
+| **系统返回键** | ✅ | 内嵌页面优先返回 App 工作台，不直接退出整个应用 |
 
 ---
 
-## 二、未解决的问题（按优先级）
+## 二、本轮已完成的修复与后续注意
 
-### P0 — 文件上传（本轮改动，**尚未实测通过**）
+### 已完成 — 文件上传链路
 
-App 已经装了修复版（0.5.9），但**我没有成功验证**。目前只确认：
-- DSH 输入区的附件按钮存在（`+` 图标，界面底部左侧）
-- 我点击时点偏了，界面切换到了 DSH 主页，没看到选择器
-
-**修复内容**（`MainActivity.kt` 的 `showFileChooser` / `buildFileChooserIntent`）：
+`MainActivity.kt` 的 `showFileChooser` / `buildFileChooserIntent` 已完成：
 - 原实现只用 `params.createIntent()`，无备选。在 MIUI / Android 11+ 上该 intent 常解析不到处理器，代码返回 `false`，**WebView 会静默吞掉点击**
 - 新实现依次尝试 5 个候选 intent，取第一个能 `resolveActivity` 的
 - 按 `acceptTypes` 设置 MIME，多类型用 `EXTRA_MIME_TYPES`，支持多选
 - 取消选择也回调 `null`（否则页面 file input 永久禁用）
 - 新增：上一次未返回的选择器会被主动解除阻塞
+文件选择结果会复制到 App cache 下的 `webview-upload/`，再通过 `FileProvider` 交给 WebView，避免 MIUI provider 的临时 URI 在选择器关闭后失效。WebView 调试日志 tag 为 `HarnessWebView`。
 
-**下一步要做**：打开 Harness → 点输入框的 `+` → 观察是否弹出系统选择器。三种失败形态原因不同：
-1. **选择器不弹** → `resolveActivity` 全失败，或 `onShowFileChooser` 没被调用
-2. **弹了但列表空** → MIME 过滤过窄，或 MIUI 的内容提供者问题
-3. **选了没上传** → WebView 侧或 DSH 的 `/api/upload` 问题
+### 已完成 — DSH 设置与移动布局
 
-调试手段：`WebView.setWebContentsDebuggingEnabled(true)` 已启用，配合 `MainActivity` 里新增的 `onConsoleMessage` 日志（tag `HarnessWebView`）可以看到页面侧报错。
+注入的移动布局会把设置弹窗改为紧凑顶部标签，并让内容区独立滚动；同时修正 Android WebView 在该页面上出现的根节点零高度问题。真机已验证主页面、输入区和键盘布局。
 
-### P1 — DSH 设置 → 模型 面板内容空白
+### 已完成 — DSH 下拉菜单
 
-设置弹窗能打开（标签：通用设置 / 模型 / 内置工具 / Agent 预设 / 已归档对话），但**「模型」标签下的内容区是空白的**。这是 DSH 前端的问题还是 WebView 渲染问题，**未定位**。
+DSH 的模型、权限和顶部更多操作菜单使用 `100vh` 计算最大高度；Android WebView 在移动端会把该表达式算成 0。移动端注入样式现在改用实际的 visual viewport 高度，并为菜单开启滚动和触摸层级。三类菜单已在真机 APK 上直接展开验证。
 
-影响：用户无法通过界面填写 DeepSeek API Key。注意这条文案也过时了：「首次进入 Harness 后，请在设置 → 模型中填写 DeepSeek API Key」。
+### 已完成源码修复 — DSH 提问选项、诊断误报与可移动工具栏
 
-### P2 — 零散问题
+- DSH 的 `ask_user_question` 卡片会把很长的 `question` 原文放进标题；标题无限增长时会把选项和提交按钮压到 0 高度。Android 侧现在对 CSS Module 的 `headingBlock/title` 加高度上限、内部滚动和长文本换行，选项不再被标题挤出卡片。
+- Android WebView 还会把 DSH 卡片原 CSS 中的 `max-height: min(60vh, 520px)` 解析成 0；现在仅对 composer 内的提问卡改用实际 visual viewport 高度，恢复选项区和底部提交栏。真机上已确认提问选项可点击。
+- Harness 根地址不带一次性 token 时返回 HTTP 401 是正常鉴权行为，不代表 3080 服务停止。连接诊断现在将本机 401–403 识别为“服务可达，需要访问令牌”，不再显示成故障。
+- 专注模式的工具入口默认收起到右侧中部；按住收起按钮或展开后的工具栏即可在整个安全区域内拖动，位置边界会自动限制在屏幕内；位置会保存，展开后可一键归位。工具栏还提供页面刷新和可持久化的屏幕常亮开关。
+- 连接诊断弹窗支持复制诊断摘要，便于在手机上把网络、Termux、端口、回调和错误信息一次性转发出来。
+- 原生 Codex 备用对话的消息文本支持长按选择复制；流式回复只在用户接近底部时自动滚动，用户向上查看旧内容不会被打断；输入框支持软键盘“发送”动作。
+- 最近使用的工作区写入 `mobile_preferences.last_workspace`，再次打开 App 会优先回到上次的 Codex/Harness 页面。
+- Codex/Harness 页面包装栏新增网页后退、前进和刷新按钮；按钮状态由 WebView 的 `canGoBack()` / `canGoForward()` 实时同步，避免手机用户只能依赖系统返回键。
+- 工作区切换改为两个页面同时保活、当前页面置顶；切换 Codex/Harness 不再销毁旧 WebView，旧页面的滚动位置、表单输入和网页状态可以继续使用。只有当前工作区启用返回键和触摸层级，后台工作区不会抢操作。
+- `HarnessViewportFix` 增加页面级安装保护：同一个 WebView 多次触发 `onPageFinished` 时不再重复创建 MutationObserver/resize listener；DSH 流式消息造成的 DOM 更新通过 `requestAnimationFrame` 合并，降低手机端重复重排。
+- 文件选择回传增加状态提示：选中文件后先显示正在准备，暂存 URI 完成后显示已准备，异常时显示失败原因；每次新选择都会使旧暂存任务失效，旧任务不会再次回调已解除的 WebView 文件输入。
+- 手机相机附件：当网页通过 `<input type="file" accept="image/*" capture>` 请求拍照时，Android 直接打开系统相机，将照片写入私有缓存；相机取消、无输出、暂存取消或 Activity 销毁都会删除临时照片，成功后仍沿用 URI 读取、大小校验和 FileProvider 回传。
+- 桌面图标快捷入口：`shortcuts.xml` 提供 Codex、Harness、连接诊断三个静态入口；`MainActivity` 通过 `onCreate` 和 `onNewIntent` 统一消费请求，打开已存在页面时保持 WebView 状态，不会因快捷跳转重复下发 Termux 启动命令。
+- 系统分享导入：Manifest 接收 `ACTION_SEND` / `ACTION_PROCESS_TEXT` 的 `text/plain`；文本限制为最多 100000 个字符，切到原生 Codex 后只写入 `composer_draft` 并等待用户主动点击发送，返回或新建对话仍沿用原有清理逻辑。
+- Codex/Harness 的 WebView 错误卡片新增“恢复服务”：复用本地健康检查补启缺失的 Codex/Harness 服务，等待检查完成后自动触发当前页面刷新；服务本来在线时也可用来修复失效的页面连接。
+- 专注模式展开后的浮动工具栏新增工作区切换按钮；切换到已打开的工作区会继续使用其保活 WebView，切换到未打开的工作区则退出专注模式并显示对应启动页。
+- 连接诊断新增“查看最近 Termux 日志”：通过回调读取 `harness.log`、`cdesktop.log`、`codex.log` 各最近 80 行，展示在可滚动弹窗中并支持复制；日志回调不会再被误判为 Harness URL，也会沿用 token 脱敏。
+- 健康轮询按 Activity 前后台状态调整：前台每 5 秒检查并保留自动恢复；退到后台时改为 30 秒低频检查且跳过主动恢复；收到 `ON_RESUME` 后立即刷新 Termux、端口和 WebView 回调状态。
+- 最近日志弹窗新增“分享”，通过 Android 原生 `ACTION_SEND` 分享已经脱敏的纯文本日志，适合直接发给排查人员或保存到其他 App。
+- 原生 Codex 备用对话把未发送输入保存到 `codex_mobile_settings.composer_draft`；进程被系统回收后可恢复，发送和新建对话会清除草稿。
+- 原生 Codex 消息列表根据可见位置显示“↓ 回到底部”按钮；用户上滑查看旧消息时不被流式输出强行拉回，点击按钮可回到最新回复或工作指示器。
+- 专注模式工具栏新增“字 N%”菜单，分别调整 Codex/Harness WebView 的文字缩放（80%–140%）；新值保存到 `mobile_preferences.web_text_zoom_codex` / `web_text_zoom_harness`，旧版统一 `web_text_zoom` 会作为首次迁移默认值，切换工作区或重载页面后仍保持。
+- Codex/Harness WebView 新增下载回调：通过 Android `DownloadManager` 保存网络文件，自动带上当前 WebView 的 Cookie、User-Agent 和 MIME 类型，下载结果进入系统通知和公共“下载”目录；不支持的 `blob:` 等链接会给出明确提示。
+- Codex/Harness WebView 新增加载看门狗：`onPageStarted` 后 15 秒仍未完成且页面没有明确错误时，按现有 1 秒/2 秒策略最多自动重试两次；成功完成会取消看门狗，401–403 等鉴权响应不会被重复重试，最终失败仍落到原有“重新加载 / 恢复服务 / 连接诊断”卡片。
+- 本地服务操作新增互斥锁：顶部启动/停止、工作区启动、页面错误恢复和后台自动恢复不能同时下发命令；Codex 工作台最多等待 90 秒、Harness 45 秒、普通服务 30 秒观察真实端口状态，超时只释放 UI 锁并交给前台健康轮询继续检查，避免把“命令已发送”误报成“服务已就绪”。
+- Termux 后台保活：`health()` 和连接诊断会读取 `PowerManager.isIgnoringBatteryOptimizations("com.termux")`；Harness 首页和诊断弹窗显示状态，点击后优先打开针对 Termux 的系统请求页，系统不支持时回退到电池优化列表。App 不会自动申请豁免，最终选择由用户在系统设置中完成。
+- 横屏/小高度布局：`LocalConfiguration` 检测横屏或 `screenHeightDp <= 500`，AppHeader 从 48dp 压缩到 42dp 并隐藏状态副标题，AppNavigation 从 56dp 压缩到 48dp 且隐藏文字标签；专注模式和 WebView 本身不改变，系统返回键、IME 避让和可移动工具栏逻辑保持不变。
+- 旋转保活：`MainActivity` 在 Manifest 中声明 `orientation|screenSize|screenLayout|smallestScreenSize` 配置变化由自身处理，避免横竖屏切换触发 Activity/WebView 重建；Compose 仍能收到新的 `LocalConfiguration`，因此紧凑顶部栏/底部导航会实时切换。
+- 网页内查找：Codex/Harness WebView 包装栏新增搜索按钮，弹窗调用 `findAllAsync` 并支持 `findNext(true/false)`、清除匹配和 `ImeAction.Search`；只作用于当前网页，不会把搜索词写入 Codex/Harness 会话或本地配置。
+- 附件暂存进度：`stageUploadUri` 改用 64 KiB 缓冲区逐段复制，通过主线程节流更新“第 N/M 个文件、文件名、已复制/总大小”；大小未知时显示“大小未知”，重复打开选择器仍以 `uploadRequestId` 丢弃旧进度和旧回调。
+- 附件暂存取消与校验：保留当前上传回调和协程任务；用户关闭进度提示、重新打开选择器或销毁 Activity 时取消旧任务并解除 WebView 等待；复制完成后按 `OpenableColumns.SIZE` 校验目标文件大小，失败删除半成品并抛出错误，不再回退到原始 provider URI。
+- 实时网络状态：`LiveRuntimeState` 记录 `ConnectivityManager` 的活动网络、传输类型和 `NET_CAPABILITY_VALIDATED`；健康摘要会在本地服务在线但没有外网/网络未验证时追加提示，Harness 手机环境卡片增加网络状态行。
+- 手机存储保护：`stageUploadUri` 读取 `StatFs.availableBytes`，对已知大小的文件预留 1 MiB 安全余量；不足时在复制前抛出带“需要/当前可用”信息的错误，复制异常统一删除目标半成品。
+- 原生 Codex 对话恢复：`CodexWebSocketClient` 将当前 `threadId` 保存到 `codex_mobile_settings.active_thread_id`；初始化或重连后自动发送 `thread/read`，恢复完成前公开 `restoring` 状态并禁用 Composer；新建对话会清除该线程记忆，恢复失败也会清除失效线程。
+- 原生 Codex 整段分享：`CodexNativeScreen` 按“你/系统/Codex”角色拼接非空消息，限制为最后 100000 个字符后调用 `ACTION_SEND`；空对话和无分享处理器时显示明确提示。
+- 原生 Codex 后台完成通知：Manifest 声明 `POST_NOTIFICATIONS`；顶部铃铛默认关闭，点击后才调用系统权限请求，权限通过后写入 `mobile_preferences.background_completion_notifications`；后台期间从 busy 变为完成时创建通知渠道并发送可点击通知，回前台时不再重复提示。
+- 原生 Codex 对话内查找：`CodexNativeScreen` 保存 `messageSearchQuery`，按消息文本不区分大小写生成 `visibleMessages`；列表滚动和“回到底部”按筛选结果工作，零匹配时显示明确空状态，清除按钮恢复完整对话。
+- 网络切换即时刷新：`MobileWorkbench` 在前台通过 `ConnectivityManager.registerDefaultNetworkCallback` 监听 `onAvailable`、`onLost` 和 `onCapabilitiesChanged`；事件合并 350ms 后调用现有 `refresh()`，离开前台时注销回调并取消待执行刷新。
+- 原生 Codex 紧凑操作栏：`CodexNativeScreen` 仅保留返回/新建按钮和一个 `DropdownMenu` 入口；菜单内按手机触摸尺寸提供配置、历史、对话查找、通知开关与整段分享，避免窄屏按钮超出可视区域。
+- 网页错误详情复制：新增 `copyWebErrorDetails`，Codex 工作台和 DeepSeek Harness 的错误卡在现有操作下方提供复制入口，内容包含页面名称、错误文本和当前 WebView URL，不改变网页会话或重载状态。
+- 附件缓存管理：连接诊断新增“附件暂存”卡片，异步显示 `webview-upload` 的文件数量、总占用和超过 24 小时的可清理数量；“清理 24 小时前缓存”只删除旧暂存文件，清理完成后立即刷新统计并反馈释放空间。
+- 窄屏专注工具栏：`FocusTools` 根据 `screenWidthDp <= 420` 隐藏重复的 Codex/Harness 标题，适配加入沉浸模式入口后的完整按钮组，保留所有功能按钮并重新计算拖动边界；连接诊断图标按网络可用性显示青色、未验证黄色或不可用红色，并更新无障碍描述。
+- 当前工作区服务重启：`DiagnosticsDialog` 新增“重启”入口；Codex 工作台调用 `restartCodexDesktopAndOpen(forceRestart = true)`，Harness 调用 `restartHarnessAndOpen(forceRestart = true)`，先关闭当前 WebView，再强制清理旧进程、等待对应端口和回调恢复，操作锁防止重复下发。
+- 诊断分享：将原有诊断摘要抽成统一文本生成函数，复制和系统 `ACTION_SEND` 共用同一份内容；分享保留网络、Termux、当前工作区、附件缓存、端口探测和最近回调信息，并沿用运行时已有的 token 脱敏。
+- 返回键关闭保护：`MobileWorkbench` 将网页专注模式的第二次系统返回改为显示确认框；键盘可见时仍交给系统先收起 IME，网页包装栏的后退按钮仍优先使用 WebView 历史记录，只有确认“关闭工作区”才调用原有关闭回调。
+- 弹窗高度响应式：新增 `mobileDialogMaxHeight`，按 `screenHeightDp` 为诊断、日志、Codex 设置、历史和审批内容区预留标题/确认按钮空间；大屏可显示更多内容，小屏自动缩短并依靠 `LazyColumn`/滚动容器继续访问完整内容。
+- 工具栏按工作区保存：`FocusTools` 使用 `focus_tools_codex_dx/dy` 和 `focus_tools_harness_dx/dy` 两组偏好；首次读取时回退到旧的 `focus_tools_dx/dy`，拖动、归位、屏幕尺寸重新限制边界时都只写入当前工作区坐标。
+- WebView 渲染进程自愈：Codex/Harness 各自记录 `rendererRecoveryAttempt`；`onRenderProcessGone` 首次触发时延迟 600ms 递增 `reloadKey` 重建 AndroidView，页面成功完成后清零；同一页面再次崩溃则保留原错误卡，避免崩溃循环。
+- 沉浸模式：`MobileWorkbench` 将 `immersive_mode` 保存到 `mobile_preferences`；网页专注、用户开启且 Activity 在前台时通过 `WindowInsetsControllerCompat` 隐藏 system bars，使用系统手势可暂时显示，条件不满足或 effect 释放时恢复 system bars，不改变默认非沉浸布局。
+- 原生 Codex 每条消息头部新增“复制”和系统分享按钮；复制写入 Android 剪贴板并显示确认提示，分享沿用系统 `ACTION_SEND` 面板，长按选择复制仍保留。
+- 专注模式浮动工具条额外应用 `imePadding`；软键盘弹出时工具条和拖动边界避开 IME，WebView 输入框仍可正常使用。
+- 返回键逻辑读取 IME 可见状态：MobileWorkbench、Codex 原生对话、Codex WebView、Harness WebView 在键盘可见时暂不拦截返回键，让系统先收起键盘；键盘收起后仍按原有层级返回工作区或网页历史。
+- Codex 历史弹窗新增本地搜索框，按标题和摘要不区分大小写筛选；支持清除关键词、继续对话和原有刷新，搜索无结果时显示明确提示。
+- 顶部停止按钮改为两步确认：只有在确认“停止全部”后才关闭 Codex、Codex 工作台和 Harness 窗口并下发 `stopAll()`；启动路径不受影响。
+- Codex/Harness WebView 在主框架网络错误、HTTP 408/429/5xx 时自动重试两次，等待 1 秒和 2 秒；成功后清零重试计数，401–403 不重试，避免把令牌失效误当成临时网络问题。
+- Activity 在 `ON_PAUSE` 时记录原生 Codex 是否正在执行；回到前台后若该任务已经完成，显示一次“Codex 已在后台完成”提示，之后清除标记，不影响 WebView 或会话状态。
 
-- **App 横幅文案过时**：显示「首次启动会在 Debian/ARM64 中下载 cdesktop 组件，约 50 MB」，实际二进制已预置，不下载
+### 后续注意
+
+- **cdesktop 首次启动较慢**：预置二进制已避免下载，但 Rust 服务首次启动仍可能需要几十秒；App 会显示工作台健康状态并提供页面重试
 - **cdesktop 遥测报错**：`services::services::analytics: Error sending event 'session_start'`（posthog 连不上），无害但刷日志
 - **cdesktop 找不到 `claude` / `opencode`**：只装了 Codex，属预期
-- **`MainActivity.kt` 已 1268 行 / 43+ 函数**：单文件承载全部 UI，后续大改前建议先拆包
+- **`MainActivity.kt` 仍是单文件 UI**：后续大改前建议拆成 `ui/` 与 `web/` 子包
+- **0.5.32 APK 已在桌面环境完成 assembleDebug/lintDebug**；设备重连后执行 `adb install -r app\\build\\outputs\\apk\\debug\\app-debug.apk`，重点回归原生 Codex 后台完成/回前台提示和标记清理、网页网络错误自动重试/成功清零、401–403 不重试、停止按钮确认/取消/确认后停止、历史对话关键词搜索/清除/无结果提示/继续对话、键盘打开时返回键先收起 IME、键盘收起后再返回网页/工作区、软键盘弹出时浮动工具条避让和拖动、原生 Codex 消息复制/系统分享/长按复制、网页文字缩放在 Codex/Harness、切换工作区和重载后的保持、原生 Codex 回到底部/上滑不抢位置、草稿恢复/发送清理/新建清理、日志查看/复制/系统分享、前后台轮询节流和回前台恢复、App 内日志读取、专注模式工作区切换、页面错误后的恢复服务/自动刷新、附件暂存提示和重复选择、流式 DSH 布局、双页面切换状态保留、网页后退/前进/刷新、工作区记忆、原生 Codex 键盘发送、加载进度、工具栏归位、Termux 重开、DSH 下拉菜单和附件选择
 
 ---
 
@@ -150,13 +214,13 @@ ssh -p 8022 127.0.0.1
 | Codex CLI | `0.155.1`，ChatGPT 已登录（`codex login status` 可验）|
 | DeepSeek Harness | `0.1.6-alpha.2`（需 `--expose-internals`）|
 | cdesktop | `0.2.3`，端口 3200（预览代理 37453）|
-| App | `0.5.9` |
+| App | `0.5.65`（versionCode 82） |
 
 ### 构建命令
 ```powershell
-$env:JAVA_HOME = "D:\Documents\ChatGPT\手机搭建Linux\jdk17\jdk-17.0.20.1+1"
-$env:ANDROID_HOME = "D:\Android\Sdk"
-.\gradle-dist\gradle-8.10.2\bin\gradle.bat --no-daemon :app:assembleDebug --console=plain
+$env:JAVA_HOME = "<path-to-jdk-17>"
+$env:ANDROID_HOME = "<path-to-android-sdk>"
+.\gradlew.bat --no-daemon :app:assembleDebug :app:lintDebug --console=plain
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 ```
 
@@ -171,6 +235,6 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
          66 files, 0.18 MB
 ```
 
-这个提交固定了「编译通过、两个界面在真机上可用」的状态，可作为回退点。工作树当前干净。
+这个提交固定了「编译通过、两个界面在真机上可用」的状态，可作为回退点。本轮改动在其上继续进行；`git diff --check` 和 `assembleDebug + lintDebug` 已通过，0.5.65 的系统分享文字导入、桌面图标快捷入口、手机相机附件回传、原生 Codex 语音输入、按工作区网页缩放、错误详情 token 脱敏、可选沉浸模式、420dp 窄屏阈值、WebView 渲染自愈、按工作区保存工具栏位置、弹窗高度响应式、返回键关闭保护、诊断分享、当前工作区服务重启、窄屏专注工具栏、附件缓存管理、网页错误详情复制、原生 Codex 紧凑操作栏、网络切换即时刷新、对话内查找、后台完成通知、整段对话分享、原生 Codex 对话恢复、存储保护、网络状态显示、附件取消、严格暂存校验以及前面功能的真机回归均已写入源码。
 
 `.tools/oneoff-file-recovery/` 里是我修复文件编码时用的一次性脚本（含 dex 字符串提取与逐行还原）——**正常情况下不需要再跑**，保留仅供追溯。`.tools/` 根目录下的其余脚本是常用的设备调试工具。

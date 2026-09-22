@@ -1,8 +1,19 @@
 ﻿# Phone control helpers for CodexHarness / Termux recovery.
 # Usage:  . .\.tools\phone.ps1   then call the functions below.
 
-$script:Adb = 'D:\Android\Sdk\platform-tools\adb.exe'
-$script:ShotDir = 'D:\Documents\ChatGPT\手机搭建Linux'
+$script:ProjectRoot = Split-Path -Parent $PSScriptRoot
+$script:ShotDir = $script:ProjectRoot
+
+$adbCandidates = @()
+if ($env:ANDROID_ADB) { $adbCandidates += $env:ANDROID_ADB }
+if ($env:ANDROID_HOME) { $adbCandidates += (Join-Path $env:ANDROID_HOME 'platform-tools\adb.exe') }
+if ($env:ANDROID_SDK_ROOT) { $adbCandidates += (Join-Path $env:ANDROID_SDK_ROOT 'platform-tools\adb.exe') }
+$adbCommand = Get-Command adb -ErrorAction SilentlyContinue
+if ($adbCommand) { $adbCandidates += $adbCommand.Source }
+$script:Adb = $adbCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+if (-not $script:Adb) {
+    throw '找不到 adb。请设置 ANDROID_HOME/ANDROID_SDK_ROOT，或把 platform-tools 加入 PATH。'
+}
 
 function Adb {
     param([Parameter(ValueFromRemainingArguments = $true)] $Args)

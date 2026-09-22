@@ -3,9 +3,10 @@ package app.codexharness.mobile.runtime
 /**
  * Boundary between the Android UI and the Termux/Debian runtime.
  *
- * The sample UI uses mocked state for now. The real implementation will call
- * Termux RUN_COMMAND (or a small local runner) and expose health checks for
- * codex app-server and DeepSeek Harness.
+ * The production logic lives in TermuxRuntimeManager, which dispatches Termux
+ * RUN_COMMAND jobs and probes the local Codex/Harness services. This
+ * small protocol model remains useful to keep UI-facing runtime concepts
+ * independent from the concrete Termux transport.
  */
 interface RuntimeBridge {
     suspend fun startCodex(): Result<Unit>
